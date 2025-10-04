@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  # PostgreSQL with PostGIS for main application data
+  # PostgreSQL optimized for mobile GPS tracking data
   postgres:
-    image: postgis/postgis:15-3.3
+    image: postgres:18
     container_name: fleettracker-postgres
     environment:
       POSTGRES_DB: fleettracker
@@ -15,32 +15,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - fleettracker-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fleettracker -d fleettracker"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # TimescaleDB for GPS tracking time-series data
-  timescaledb:
-    image: timescale/timescaledb-ha:pg15-latest
-    container_name: fleettracker-timescaledb
-    environment:
-      POSTGRES_DB: fleettracker_timeseries
-      POSTGRES_USER: fleettracker
-      POSTGRES_PASSWORD: password123
-      POSTGRES_HOST_AUTH_METHOD: trust
-    ports:
-      - "5433:5432"
-    volumes:
-      - timescale_data:/var/lib/postgresql/data
       - ./init-timescale.sql:/docker-entrypoint-initdb.d/init-timescale.sql
     networks:
       - fleettracker-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fleettracker -d fleettracker_timeseries"]
+      test: ["CMD-SHELL", "pg_isready -U fleettracker -d fleettracker"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -70,7 +49,6 @@ services:
       - "8080:8080"
     environment:
       DATABASE_URL: postgres://fleettracker:password123@postgres:5432/fleettracker?sslmode=disable
-      TIMESERIES_URL: postgres://fleettracker:password123@timescaledb:5432/fleettracker_timeseries?sslmode=disable
       REDIS_URL: redis://redis:6379
       JWT_SECRET: your-super-secret-jwt-key-for-development
       PORT: 8080
@@ -78,8 +56,6 @@ services:
       DEBUG: true
     depends_on:
       postgres:
-        condition: service_healthy
-      timescaledb:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -107,7 +83,6 @@ services:
       - fleettracker-network
     depends_on:
       - postgres
-      - timescaledb
 
   # Redis Commander for Redis management (optional)
   redis-commander:
@@ -124,8 +99,6 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
-  timescale_data:
     driver: local
   redis_data:
     driver: local
