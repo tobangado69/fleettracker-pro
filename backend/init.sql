@@ -1,8 +1,9 @@
 -- FleetTracker Pro Database Initialization
--- PostgreSQL optimized for mobile GPS tracking data
+-- PostgreSQL with PostGIS for main application data
 -- Indonesian Fleet Management SaaS Application
 
--- Enable UUID extension
+-- Enable PostGIS extension
+CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create database user if not exists
@@ -133,18 +134,16 @@ CREATE TABLE IF NOT EXISTS drivers (
     medical_check_expiry DATE
 );
 
--- Trips table optimized for mobile GPS data
+-- Trips table
 CREATE TABLE IF NOT EXISTS trips (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     vehicle_id UUID NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
     driver_id UUID NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    start_latitude DECIMAL(10,8),
-    start_longitude DECIMAL(11,8),
-    end_latitude DECIMAL(10,8),
-    end_longitude DECIMAL(11,8),
-    start_location VARCHAR(255),
-    end_location VARCHAR(255),
+    start_location GEOMETRY(POINT, 4326),
+    end_location GEOMETRY(POINT, 4326),
+    planned_route GEOMETRY(LINESTRING, 4326),
+    actual_route GEOMETRY(LINESTRING, 4326),
     start_time TIMESTAMPTZ,
     end_time TIMESTAMPTZ,
     estimated_arrival TIMESTAMPTZ,
@@ -163,7 +162,7 @@ CREATE TABLE IF NOT EXISTS trips (
     parking_cost DECIMAL(10,2)
 );
 
--- Driver events table for behavior monitoring (mobile GPS optimized)
+-- Driver events table for behavior monitoring
 CREATE TABLE IF NOT EXISTS driver_events (
     id BIGSERIAL PRIMARY KEY,
     vehicle_id UUID NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
@@ -172,13 +171,16 @@ CREATE TABLE IF NOT EXISTS driver_events (
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     event_type VARCHAR(50) NOT NULL, -- 'harsh_braking', 'speeding', 'rapid_acceleration'
     severity VARCHAR(20) DEFAULT 'medium', -- 'low', 'medium', 'high'
-    latitude DECIMAL(10,8),
-    longitude DECIMAL(11,8),
-    location VARCHAR(255),
+    location GEOMETRY(POINT, 4326),
     speed_at_event DECIMAL(5,2),
     timestamp TIMESTAMPTZ NOT NULL,
     metadata JSONB, -- Additional event-specific data
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    INDEX (driver_id, timestamp),
+    INDEX (event_type, timestamp),
+    INDEX (company_id, timestamp),
+    INDEX (severity, timestamp)
 );
 
 -- Subscriptions table for Indonesian payment integration
@@ -260,10 +262,10 @@ CREATE INDEX IF NOT EXISTS idx_payments_company_id ON payments(company_id);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(payment_status);
 CREATE INDEX IF NOT EXISTS idx_payments_created_at ON payments(created_at);
 
--- Create indexes for mobile GPS data optimization
-CREATE INDEX IF NOT EXISTS idx_trips_start_coordinates ON trips (start_latitude, start_longitude);
-CREATE INDEX IF NOT EXISTS idx_trips_end_coordinates ON trips (end_latitude, end_longitude);
-CREATE INDEX IF NOT EXISTS idx_driver_events_coordinates ON driver_events (latitude, longitude);
+-- Create spatial indexes for PostGIS
+CREATE INDEX IF NOT EXISTS idx_trips_start_location ON trips USING GIST (start_location);
+CREATE INDEX IF NOT EXISTS idx_trips_end_location ON trips USING GIST (end_location);
+CREATE INDEX IF NOT EXISTS idx_driver_events_location ON driver_events USING GIST (location);
 
 -- Insert default company for development
 INSERT INTO companies (id, name, email, phone, address, subscription_plan, subscription_expires_at) 

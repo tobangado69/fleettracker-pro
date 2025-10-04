@@ -7,6 +7,7 @@
 - **Technology Stack**: Go + PostgreSQL + Vite + TypeScript + TanStack Query + Better Auth
 - **Architecture**: Monolithic with Separated Frontend/Backend
 - **Target Platform**: Web & Mobile (Indonesian Market)
+- **GPS Strategy**: Mobile Device GPS (Smartphone-based tracking)
 
 ---
 
@@ -19,8 +20,8 @@
 │   Frontend      │    │    Backend      │    │   Database      │
 │                 │    │                 │    │                 │
 │ Vite + TS       │◄──►│ Go + Gin        │◄──►│ PostgreSQL 18   │
-│ TanStack Query  │    │ JWT Auth        │    │ PostGIS         │
-│ Better Auth     │    │ WebSocket       │    │ TimescaleDB     │
+│ TanStack Query  │    │ JWT Auth        │    │ (Mobile GPS     │
+│ Better Auth     │    │ WebSocket       │    │  Optimized)     │
 │ TailwindCSS     │    │ REST APIs       │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          │                       │                       │
@@ -30,6 +31,7 @@
          └──────────────┤ Google Maps     │─────────────┘
                         │ QRIS Payment    │
                         │ WhatsApp API    │
+                        │ Mobile GPS APIs │
                         └─────────────────┘
 ```
 
@@ -131,33 +133,36 @@ CREATE TABLE drivers (
 );
 ```
 
-#### 2.1.3 Mobile GPS Tracking & Location Tables
+#### 2.1.3 GPS Tracking & Location Tables
 
 ```sql
--- Mobile GPS tracking data (optimized for smartphone GPS)
+-- Install PostGIS extension for geospatial data
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+
+-- GPS tracking data (optimized for time-series)
 CREATE TABLE gps_tracks (
     id BIGSERIAL,
     vehicle_id UUID NOT NULL REFERENCES vehicles(id),
     driver_id UUID REFERENCES drivers(id),
-    latitude DECIMAL(10,8) NOT NULL, -- Mobile GPS latitude
-    longitude DECIMAL(11,8) NOT NULL, -- Mobile GPS longitude
+    location GEOMETRY(POINT, 4326) NOT NULL, -- PostGIS point
     speed DECIMAL(5,2), -- km/h
     heading INTEGER, -- degrees 0-360
     altitude DECIMAL(8,2), -- meters
-    accuracy DECIMAL(5,2), -- meters (GPS accuracy)
-    battery_level INTEGER, -- mobile device battery percentage
-    is_moving BOOLEAN DEFAULT false,
+    accuracy DECIMAL(5,2), -- meters
     timestamp TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     
     PRIMARY KEY (vehicle_id, timestamp)
 );
 
+-- Convert to TimescaleDB hypertable for better time-series performance
+SELECT create_hypertable('gps_tracks', 'timestamp', 'vehicle_id', 4);
+
 -- Create indexes for common queries
 CREATE INDEX idx_gps_tracks_vehicle_time ON gps_tracks (vehicle_id, timestamp DESC);
-CREATE INDEX idx_gps_tracks_lat_lng ON gps_tracks (latitude, longitude);
+CREATE INDEX idx_gps_tracks_location ON gps_tracks USING GIST (location);
 CREATE INDEX idx_gps_tracks_speed ON gps_tracks (speed) WHERE speed > 80; -- Speed violations
-CREATE INDEX idx_gps_tracks_moving ON gps_tracks (is_moving, timestamp);
 ```
 
 #### 2.1.4 Trip Management Tables
@@ -169,10 +174,10 @@ CREATE TABLE trips (
     vehicle_id UUID NOT NULL REFERENCES vehicles(id),
     driver_id UUID NOT NULL REFERENCES drivers(id),
     company_id UUID NOT NULL REFERENCES companies(id),
-    start_latitude DECIMAL(10,8),
-    start_longitude DECIMAL(11,8),
-    end_latitude DECIMAL(10,8),
-    end_longitude DECIMAL(11,8),
+    start_location GEOMETRY(POINT, 4326),
+    end_location GEOMETRY(POINT, 4326),
+    planned_route GEOMETRY(LINESTRING, 4326),
+    actual_route GEOMETRY(LINESTRING, 4326),
     start_time TIMESTAMPTZ,
     end_time TIMESTAMPTZ,
     estimated_arrival TIMESTAMPTZ,
@@ -191,8 +196,7 @@ CREATE TABLE driver_events (
     trip_id UUID REFERENCES trips(id),
     event_type VARCHAR(50) NOT NULL, -- 'harsh_braking', 'speeding', 'rapid_acceleration'
     severity VARCHAR(20) DEFAULT 'medium', -- 'low', 'medium', 'high'
-    latitude DECIMAL(10,8),
-    longitude DECIMAL(11,8),
+    location GEOMETRY(POINT, 4326),
     speed_at_event DECIMAL(5,2),
     timestamp TIMESTAMPTZ NOT NULL,
     metadata JSONB, -- Additional event-specific data
@@ -204,13 +208,12 @@ CREATE TABLE driver_events (
 
 ### 2.2 Database Optimization Strategies
 
-#### 2.2.1 Mobile GPS Data Optimization Strategy
+#### 2.2.1 Partitioning Strategy
 ```sql
--- Optimize mobile GPS data storage and retrieval
--- Create monthly partitions for mobile GPS data
+-- Partition gps_tracks by month for better performance
 CREATE TABLE gps_tracks_template (LIKE gps_tracks INCLUDING DEFAULTS INCLUDING CONSTRAINTS);
 
--- Create monthly partitions for better mobile GPS data management
+-- Create monthly partitions
 CREATE OR REPLACE FUNCTION create_monthly_partition(table_name TEXT, start_date DATE)
 RETURNS VOID AS $$
 DECLARE
@@ -223,15 +226,6 @@ BEGIN
     EXECUTE format('CREATE TABLE %I PARTITION OF %I 
                    FOR VALUES FROM (%L) TO (%L)',
                    partition_name, table_name, start_date, end_date);
-END;
-$$ LANGUAGE plpgsql;
-
--- Mobile GPS data retention policy (24 months)
-CREATE OR REPLACE FUNCTION cleanup_old_mobile_gps_data()
-RETURNS VOID AS $$
-BEGIN
-    DELETE FROM gps_tracks 
-    WHERE timestamp < NOW() - INTERVAL '24 months';
 END;
 $$ LANGUAGE plpgsql;
 ```

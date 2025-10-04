@@ -84,26 +84,24 @@ To provide Indonesian fleet managers with a powerful, user-friendly platform tha
 
 ### 4.1 Core Features
 
-#### 4.1.1 Mobile GPS Tracking
+#### 4.1.1 Real-Time GPS Tracking
 **Priority**: P0 (Critical)
 
-**Description**: Real-time vehicle location tracking using mobile device GPS
+**Description**: Real-time vehicle location tracking with comprehensive data collection
 
 **Detailed Requirements:**
-- Mobile GPS location updates every 30 seconds
+- GPS location updates every 30 seconds
 - Speed monitoring with configurable speed limits
 - Route tracking with deviation alerts
 - Geofencing with custom boundary creation
 - Historical route playback (up to 12 months)
-- Mobile GPS accuracy within 10 meters (smartphone typical)
+- Location accuracy within 5 meters
 - Support for 1000+ concurrent vehicles
-- Battery optimization for mobile devices
 
 **Success Criteria:**
-- 95% mobile GPS data accuracy
+- 99.5% GPS data accuracy
 - <2 second data processing latency
 - Support for 24/7 continuous tracking
-- Battery life optimization for 8+ hour shifts
 
 #### 4.1.2 Driver Behavior Monitoring
 **Priority**: P0 (Critical)
@@ -252,14 +250,14 @@ To provide Indonesian fleet managers with a powerful, user-friendly platform tha
 - **SMS Gateway**: Alert notifications for critical events
 - **Email Service**: Automated reporting and notifications
 
-### 6.2 Mobile Device Integration
+### 6.2 Hardware Integration
 **Priority**: P0 (Critical)
 
-#### 6.2.1 Mobile GPS Integration
-- **Smartphone GPS**: Primary tracking method using driver's mobile device
-- **Mobile App Integration**: Native mobile app for GPS data collection
-- **Battery Optimization**: Intelligent GPS sampling to preserve battery life
-- **Offline Capability**: Store GPS data locally when connectivity is poor
+#### 6.2.1 GPS Tracking Devices
+- **OBD-II Support**: Standard vehicle diagnostic port integration
+- **Dedicated GPS Units**: Professional tracking hardware compatibility
+- **Mobile Device GPS**: Smartphone-based tracking for smaller fleets
+- **IoT Sensors**: Fuel level, temperature, door sensors
 
 ---
 
@@ -341,12 +339,10 @@ To provide Indonesian fleet managers with a powerful, user-friendly platform tha
 - **Frontend**: Vite + TypeScript + TanStack Query + TailwindCSS
 - **Authentication**: Better Auth with JWT
 - **Architecture**: Monolithic with separated frontend/backend
-- **Mobile GPS**: Smartphone-based GPS tracking (no dedicated hardware)
 - **Hosting**: Indonesian cloud providers for data residency
 
 ### 8.2 Integration Limitations
-- **Mobile GPS Update Frequency**: Minimum 30-second intervals (battery optimization)
-- **GPS Accuracy**: Depends on smartphone GPS quality (typically 3-10 meters)
+- **GPS Update Frequency**: Minimum 30-second intervals (battery optimization)
 - **Offline Capability**: Limited to 24 hours of cached data
 - **Concurrent Users**: Maximum 1000 simultaneous dashboard users
 - **Data Retention**: 24 months of historical data storage
