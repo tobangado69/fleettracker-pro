@@ -1,0 +1,361 @@
+# FleetTracker Pro - Comprehensive .gitignore
+# Indonesian Fleet Management SaaS Application
+
+# ===========================================
+# Operating System Files
+# ===========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.tmp
+*.temp
+
+# ===========================================
+# Go (Backend) Files
+# ===========================================
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Go build artifacts
+/build/
+/dist/
+/main
+/server
+
+# Go environment files
+.env
+.env.local
+.env.production
+.env.staging
+
+# ===========================================
+# Node.js / Frontend Files
+# ===========================================
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
+.grunt
+
+# Bower dependency directory (https://bower.io/)
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons (https://nodejs.org/api/addons.html)
+build/Release
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Snowpack dependency directory (https://snowpack.dev/)
+web_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+out
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+# Comment in the public line in if your project uses Gatsby and not Next.js
+# https://nextjs.org/blog/next-9-1#public-directory-support
+# public
+
+# Vite build output
+dist/
+dist-ssr/
+*.local
+
+# Rollup build output
+build/
+
+# Storybook build outputs
+.out
+.storybook-out
+storybook-static
+
+# ===========================================
+# Database Files
+# ===========================================
+# PostgreSQL
+*.sql.backup
+*.sql.gz
+*.dump
+*.backup
+
+# SQLite
+*.db
+*.sqlite
+*.sqlite3
+
+# Database migrations (keep structure, ignore data)
+# Uncomment if you want to ignore migration files
+# /migrations/data/
+
+# ===========================================
+# IDE and Editor Files
+# ===========================================
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+*.swp
+*.swo
+*~
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# ===========================================
+# Docker Files
+# ===========================================
+# Docker volumes
+docker-data/
+postgres-data/
+redis-data/
+
+# Docker compose override files
+docker-compose.override.yml
+docker-compose.local.yml
+
+# ===========================================
+# Security and Secrets
+# ===========================================
+# API Keys and secrets
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+.secrets/
+
+# JWT secrets
+jwt-secret.txt
+auth-secret.txt
+
+# SSL certificates
+*.crt
+*.csr
+ssl/
+
+# ===========================================
+# Logs and Monitoring
+# ===========================================
+# Application logs
+logs/
+*.log
+
+# Monitoring data
+prometheus-data/
+grafana-data/
+
+# ===========================================
+# Indonesian Specific
+# ===========================================
+# QRIS payment test files
+qris-test-*.json
+payment-test-*.json
+
+# Indonesian phone number test data
+phone-test-data.json
+
+# ===========================================
+# Fleet Management Specific
+# ===========================================
+# GPS test data
+gps-test-data/
+route-test-data/
+
+# Driver behavior test files
+driver-test-*.json
+behavior-test-*.json
+
+# Vehicle test data
+vehicle-test-data/
+fleet-test-data/
+
+# ===========================================
+# Build and Deployment
+# ===========================================
+# Build artifacts
+build/
+dist/
+out/
+
+# Deployment files
+deploy/
+deployment/
+k8s-secrets/
+
+# Terraform state
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# ===========================================
+# Testing
+# ===========================================
+# Test coverage
+coverage/
+*.cover
+*.coverprofile
+
+# Test databases
+test.db
+test.sqlite
+test.sqlite3
+
+# Test reports
+test-results/
+junit.xml
+coverage.xml
+
+# ===========================================
+# Documentation Build
+# ===========================================
+# Generated documentation
+docs/build/
+docs/_build/
+site/
+
+# ===========================================
+# Temporary Files
+# ===========================================
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ===========================================
+# Keep Important Files
+# ===========================================
+# Keep these important files even if they match patterns above
+!.gitkeep
+!.gitignore
+!README.md
+!LICENSE
+!package.json
+!go.mod
+!go.sum
+!docker-compose.yml
+!Dockerfile
