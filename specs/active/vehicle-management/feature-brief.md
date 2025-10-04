@@ -1,9 +1,9 @@
 # Vehicle Management APIs - Feature Brief
 
 **Task ID**: `vehicle-management`  
-**Status**: Planning  
+**Status**: Implementation Complete - Adding Vehicle History Tracking  
 **Priority**: High  
-**Estimated Time**: 2-3 weeks  
+**Estimated Time**: 2-3 weeks (Core Complete, History Tracking in Progress)  
 **Assigned To**: Backend Team  
 
 ## 📋 Problem Statement
@@ -13,26 +13,32 @@
 **Current State**: 
 - ✅ Backend infrastructure complete with service/handler structures
 - ✅ GORM models implemented with Indonesian compliance fields
-- ✅ API endpoint stubs created
-- ❌ **Missing**: Actual business logic implementation for vehicle CRUD operations
+- ✅ **COMPLETED**: Full vehicle CRUD operations with database integration
+- ✅ **COMPLETED**: Vehicle status tracking (active, maintenance, retired)
+- ✅ **COMPLETED**: Driver assignment functionality
+- ✅ **COMPLETED**: Company-based filtering and permissions
+- ✅ **COMPLETED**: Vehicle search and filtering endpoints
+- ✅ **COMPLETED**: Indonesian compliance validation (STNK, BPKB, license plates)
+- ✅ **COMPLETED**: Inspection date management with automatic calculation
+- 🚧 **IN PROGRESS**: Vehicle history tracking implementation
 
-**Business Impact**: Without functional vehicle management APIs, fleet managers cannot:
-- Add/update/remove vehicles from their fleet
-- Track vehicle status and maintenance schedules
-- Assign drivers to vehicles
-- Monitor vehicle performance and compliance
-- Generate vehicle reports and analytics
+**Business Impact**: Core vehicle management is complete. Now fleet managers need:
+- ✅ Add/update/remove vehicles from their fleet
+- ✅ Track vehicle status and maintenance schedules
+- ✅ Assign drivers to vehicles
+- ✅ Monitor vehicle compliance (STNK, BPKB, inspections)
+- 🚧 **Next Priority**: Track comprehensive vehicle history for maintenance, repairs, and compliance auditing
 
 ## 🎯 Success Criteria
 
 ### ✅ Technical Requirements
-- [ ] Complete vehicle CRUD operations with database integration
-- [ ] Vehicle status tracking (active, maintenance, retired)
-- [ ] Driver assignment functionality
-- [ ] Company-based filtering and permissions
-- [ ] Vehicle search and filtering endpoints
-- [ ] Vehicle history tracking
-- [ ] Indonesian compliance validation (STNK, BPKB)
+- [x] ✅ Complete vehicle CRUD operations with database integration
+- [x] ✅ Vehicle status tracking (active, maintenance, retired)
+- [x] ✅ Driver assignment functionality
+- [x] ✅ Company-based filtering and permissions
+- [x] ✅ Vehicle search and filtering endpoints
+- [x] ✅ Indonesian compliance validation (STNK, BPKB)
+- [ ] 🚧 **Vehicle History Tracking** - Maintenance, repairs, status changes, compliance events
 
 ### ✅ Performance Requirements
 - API response time < 200ms (95th percentile)
@@ -93,8 +99,14 @@ POST   /api/v1/vehicles                    // Create vehicle
 GET    /api/v1/vehicles/:id                // Get vehicle details
 PUT    /api/v1/vehicles/:id                // Update vehicle
 DELETE /api/v1/vehicles/:id                // Delete vehicle
-GET    /api/v1/vehicles/:id/history        // Vehicle history
 POST   /api/v1/vehicles/:id/assign-driver  // Assign driver
+
+// Vehicle History endpoints 🚧 **NEW**
+GET    /api/v1/vehicles/:id/history        // Get vehicle history with filters
+POST   /api/v1/vehicles/:id/history        // Add history entry (maintenance, repair, etc.)
+GET    /api/v1/vehicles/:id/maintenance    // Get maintenance history only
+GET    /api/v1/vehicles/maintenance/upcoming // Get upcoming maintenance for company
+PUT    /api/v1/vehicles/:id/history/:historyId // Update history entry
 ```
 
 #### 3. **Vehicle Status Management**
@@ -116,6 +128,41 @@ func (s *VehicleService) UpdateVehicleStatus(companyID, vehicleID string, status
 func (s *VehicleService) AssignDriver(companyID, vehicleID, driverID string) error
 func (s *VehicleService) UnassignDriver(companyID, vehicleID string) error
 func (s *VehicleService) GetVehicleDriver(companyID, vehicleID string) (*Driver, error)
+```
+
+#### 5. **Vehicle History Tracking System** 🚧 **NEW FEATURE**
+```go
+type VehicleHistory struct {
+    ID              string    `json:"id" gorm:"primaryKey;type:uuid"`
+    VehicleID       string    `json:"vehicle_id" gorm:"type:uuid;index"`
+    CompanyID       string    `json:"company_id" gorm:"type:uuid;index"`
+    EventType       string    `json:"event_type" gorm:"size:50"` // maintenance, repair, status_change, inspection, assignment
+    EventCategory   string    `json:"event_category" gorm:"size:50"` // scheduled, emergency, compliance, operational
+    Title           string    `json:"title" gorm:"size:200"`
+    Description     string    `json:"description" gorm:"type:text"`
+    MileageAtEvent  int       `json:"mileage_at_event"`
+    Cost            float64   `json:"cost" gorm:"type:decimal(12,2)"`
+    Currency        string    `json:"currency" gorm:"size:3;default:'IDR'"`
+    Location        string    `json:"location" gorm:"size:200"`
+    ServiceProvider string    `json:"service_provider" gorm:"size:200"`
+    InvoiceNumber   string    `json:"invoice_number" gorm:"size:50"`
+    Documents       JSON      `json:"documents" gorm:"type:jsonb"` // Receipts, invoices, certificates
+    NextServiceDue  *time.Time `json:"next_service_due"`
+    CreatedBy       string    `json:"created_by" gorm:"type:uuid"`
+    CreatedAt       time.Time `json:"created_at"`
+    
+    // Relationships
+    Vehicle         Vehicle   `json:"vehicle" gorm:"foreignKey:VehicleID"`
+    Company         Company   `json:"company" gorm:"foreignKey:CompanyID"`
+    Creator         User      `json:"creator" gorm:"foreignKey:CreatedBy"`
+}
+
+// Vehicle History Service Methods
+func (s *VehicleService) AddVehicleHistory(companyID, vehicleID string, req AddHistoryRequest) (*VehicleHistory, error)
+func (s *VehicleService) GetVehicleHistory(companyID, vehicleID string, filters HistoryFilters) ([]VehicleHistory, error)
+func (s *VehicleService) GetMaintenanceHistory(companyID, vehicleID string) ([]VehicleHistory, error)
+func (s *VehicleService) GetUpcomingMaintenance(companyID string) ([]VehicleHistory, error)
+func (s *VehicleService) UpdateMaintenanceSchedule(companyID, vehicleID string, req MaintenanceScheduleRequest) error
 ```
 
 ### Database Schema Integration
@@ -283,57 +330,103 @@ type VehicleFilters struct {
 }
 ```
 
+#### Vehicle History Request/Response Models 🚧 **NEW**
+```go
+// Add Vehicle History Request
+type AddHistoryRequest struct {
+    EventType       string     `json:"event_type" validate:"required,oneof=maintenance repair status_change inspection assignment"`
+    EventCategory   string     `json:"event_category" validate:"required,oneof=scheduled emergency compliance operational"`
+    Title           string     `json:"title" validate:"required,min=5,max=200"`
+    Description     string     `json:"description" validate:"required,min=10,max=1000"`
+    MileageAtEvent  int        `json:"mileage_at_event" validate:"min=0"`
+    Cost            float64    `json:"cost" validate:"min=0"`
+    Currency        string     `json:"currency" validate:"len=3"`
+    Location        string     `json:"location" validate:"max=200"`
+    ServiceProvider string     `json:"service_provider" validate:"max=200"`
+    InvoiceNumber   string     `json:"invoice_number" validate:"max=50"`
+    Documents       JSON       `json:"documents"`
+    NextServiceDue  *time.Time `json:"next_service_due"`
+}
+
+// Vehicle History Response
+type VehicleHistoryResponse struct {
+    ID              string     `json:"id"`
+    VehicleID       string     `json:"vehicle_id"`
+    EventType       string     `json:"event_type"`
+    EventCategory   string     `json:"event_category"`
+    Title           string     `json:"title"`
+    Description     string     `json:"description"`
+    MileageAtEvent  int        `json:"mileage_at_event"`
+    Cost            float64    `json:"cost"`
+    Currency        string     `json:"currency"`
+    Location        string     `json:"location"`
+    ServiceProvider string     `json:"service_provider"`
+    InvoiceNumber   string     `json:"invoice_number"`
+    Documents       JSON       `json:"documents"`
+    NextServiceDue  *time.Time `json:"next_service_due"`
+    CreatedBy       string     `json:"created_by"`
+    CreatedAt       time.Time  `json:"created_at"`
+}
+
+// History Filters
+type HistoryFilters struct {
+    EventType       *string    `json:"event_type" form:"event_type"`
+    EventCategory   *string    `json:"event_category" form:"event_category"`
+    StartDate       *time.Time `json:"start_date" form:"start_date"`
+    EndDate         *time.Time `json:"end_date" form:"end_date"`
+    MinCost         *float64   `json:"min_cost" form:"min_cost"`
+    MaxCost         *float64   `json:"max_cost" form:"max_cost"`
+    ServiceProvider *string    `json:"service_provider" form:"service_provider"`
+    Search          *string    `json:"search" form:"search"`
+    
+    // Pagination
+    Page            int        `json:"page" form:"page" validate:"min=1"`
+    Limit           int        `json:"limit" form:"limit" validate:"min=1,max=100"`
+    SortBy          string     `json:"sort_by" form:"sort_by" validate:"oneof=created_at cost mileage_at_event"`
+    SortOrder       string     `json:"sort_order" form:"sort_order" validate:"oneof=asc desc"`
+}
+```
+
 ## 🚀 Immediate Next Actions
 
-### Week 1: Core CRUD Implementation
-1. **Implement Vehicle Service** (2 days)
-   - Create `internal/vehicle/service.go` with CRUD operations
-   - Add database transaction handling
-   - Implement Indonesian compliance validation
-   - Add error handling and logging
+### ✅ **COMPLETED - Core Vehicle Management**
+1. ✅ **Vehicle Service Implementation** - Complete CRUD operations with database integration
+2. ✅ **Vehicle Handler Implementation** - Full HTTP endpoints with validation
+3. ✅ **Vehicle Status Management** - Status tracking and updates
+4. ✅ **Driver Assignment System** - Complete assignment/unassignment functionality
+5. ✅ **Search and Filtering** - Advanced search with pagination and sorting
+6. ✅ **Indonesian Compliance Features** - STNK/BPKB validation and inspection tracking
 
-2. **Implement Vehicle Handler** (2 days)
-   - Create `internal/vehicle/handler.go` with HTTP endpoints
-   - Add request validation and response formatting
-   - Implement middleware integration
-   - Add Swagger documentation
+### 🚧 **CURRENT PRIORITY - Vehicle History Tracking (Week 4)**
+1. **Vehicle History Model & Repository** (1 day)
+   - Create `VehicleHistory` GORM model with Indonesian compliance fields
+   - Implement repository pattern for history data access
+   - Add database indexes for performance optimization
 
-3. **Add Vehicle Status Management** (1 day)
-   - Implement status update functionality
-   - Add status change history tracking
-   - Create status validation logic
+2. **Vehicle History Service Implementation** (2 days)
+   - Implement `AddVehicleHistory` with automatic event categorization
+   - Create `GetVehicleHistory` with advanced filtering and pagination
+   - Add `GetMaintenanceHistory` for maintenance-specific queries
+   - Implement `GetUpcomingMaintenance` for proactive maintenance alerts
 
-### Week 2: Advanced Features
-1. **Driver Assignment System** (2 days)
-   - Implement driver assignment/unassignment
-   - Add driver-vehicle relationship validation
-   - Create assignment history tracking
+3. **Vehicle History API Endpoints** (2 days)
+   - `GET /api/v1/vehicles/:id/history` - Get vehicle history with filters
+   - `POST /api/v1/vehicles/:id/history` - Add history entry
+   - `GET /api/v1/vehicles/:id/maintenance` - Get maintenance history only
+   - `GET /api/v1/vehicles/maintenance/upcoming` - Get upcoming maintenance
+   - `PUT /api/v1/vehicles/:id/history/:historyId` - Update history entry
 
-2. **Search and Filtering** (2 days)
-   - Implement advanced search functionality
-   - Add pagination and sorting
-   - Create filter validation
+4. **Indonesian Compliance Integration** (1 day)
+   - Integrate with existing STNK/BPKB validation
+   - Add maintenance cost tracking in IDR
+   - Create compliance audit trail functionality
+   - Add service provider validation and tracking
 
-3. **Indonesian Compliance Features** (1 day)
-   - Implement STNK/BPKB validation
-   - Add license plate format validation
-   - Create inspection date tracking
-
-### Week 3: Testing and Documentation
-1. **Unit Testing** (2 days)
-   - Write comprehensive unit tests
-   - Add test coverage reporting
-   - Create mock data for testing
-
-2. **Integration Testing** (2 days)
-   - Create API integration tests
-   - Add database integration tests
-   - Test Indonesian compliance features
-
-3. **Documentation and Review** (1 day)
-   - Update API documentation
-   - Code review and optimization
-   - Performance testing
+### 📋 **Future Enhancements (Post-History Implementation)**
+1. **Advanced Analytics** - Cost analysis, maintenance trends, predictive maintenance
+2. **Document Management** - Upload and store maintenance receipts, invoices, certificates
+3. **Maintenance Scheduling** - Automated maintenance reminders and scheduling
+4. **Integration Testing** - Comprehensive testing of history tracking functionality
 
 ## 🔧 Development Commands
 
@@ -377,4 +470,22 @@ make migrate-up
 
 ---
 
-**Ready to implement comprehensive vehicle management APIs for Indonesian fleet management companies!** 🚛
+## 📝 Changelog
+
+### 2025-01-XX - Vehicle History Tracking Evolution
+**Status**: Core vehicle management complete, adding history tracking
+**Key Changes**:
+- ✅ Updated status from "Planning" to "Implementation Complete - Adding Vehicle History Tracking"
+- ✅ Marked all core CRUD operations as completed
+- ✅ Added comprehensive Vehicle History Tracking system design
+- ✅ Defined VehicleHistory GORM model with Indonesian compliance fields
+- ✅ Added new API endpoints for history management
+- ✅ Created request/response models for history operations
+- ✅ Updated immediate next actions to focus on history tracking implementation
+- ✅ Added Indonesian compliance integration for maintenance tracking
+
+**Next Priority**: Implement vehicle history tracking with maintenance, repair, and compliance event logging
+
+---
+
+**Core vehicle management APIs complete! Now implementing comprehensive vehicle history tracking for Indonesian fleet management companies!** 🚛📋
