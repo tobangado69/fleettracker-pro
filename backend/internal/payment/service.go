@@ -1,8 +1,8 @@
 package payment
 
 import (
-	"gorm.io/gorm"
 	"github.com/tobangado69/fleettracker-pro/backend/internal/common/config"
+	"gorm.io/gorm"
 )
 
 type Service struct {

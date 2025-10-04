@@ -12,8 +12,8 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"github.com/swaggo/files"
-	"github.com/swaggo/gin-swagger"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 
 	"github.com/tobangado69/fleettracker-pro/backend/internal/auth"
 	"github.com/tobangado69/fleettracker-pro/backend/internal/common/config"
@@ -23,6 +23,7 @@ import (
 	"github.com/tobangado69/fleettracker-pro/backend/internal/payment"
 	"github.com/tobangado69/fleettracker-pro/backend/internal/tracking"
 	"github.com/tobangado69/fleettracker-pro/backend/internal/vehicle"
+	"github.com/tobangado69/fleettracker-pro/backend/pkg/models"
 
 	_ "github.com/tobangado69/fleettracker-pro/backend/docs"
 )
@@ -81,6 +82,31 @@ func main() {
 		log.Fatal("Failed to connect to Redis:", err)
 	}
 	defer redisClient.Close()
+
+	// Auto-migrate database models
+	log.Println("Running database migrations...")
+	err = db.AutoMigrate(
+		&models.Company{},
+		&models.User{},
+		&models.Session{},
+		&models.AuditLog{},
+		&models.Vehicle{},
+		&models.MaintenanceLog{},
+		&models.FuelLog{},
+		&models.Driver{},
+		&models.DriverEvent{},
+		&models.PerformanceLog{},
+		&models.GPSTrack{},
+		&models.Trip{},
+		&models.Geofence{},
+		&models.Subscription{},
+		&models.Payment{},
+		&models.Invoice{},
+	)
+	if err != nil {
+		log.Fatal("Failed to migrate database:", err)
+	}
+	log.Println("Database migrations completed successfully")
 
 	// Initialize Gin router
 	r := gin.New()

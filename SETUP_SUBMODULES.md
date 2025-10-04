@@ -18,11 +18,11 @@ First, create these repositories on your Git platform (GitHub/GitLab):
 
 ```bash
 # Repository URLs (replace 'your-org' with your organization)
-https://github.com/your-org/fleettracker-backend.git
-https://github.com/your-org/fleettracker-frontend.git
-https://github.com/your-org/fleettracker-infrastructure.git
-https://github.com/your-org/fleettracker-docs.git
-https://github.com/your-org/fleettracker-shared.git
+https://github.com/tobangado69/fleettracker-backend.git
+https://github.com/tobangado69/fleettracker-frontend.git
+https://github.com/tobangado69/fleettracker-infrastructure.git
+https://github.com/tobangado69/fleettracker-docs.git
+https://github.com/tobangado69/fleettracker-shared.git
 ```
 
 ### Step 2: Add Submodules to Main Repository
@@ -32,20 +32,20 @@ https://github.com/your-org/fleettracker-shared.git
 cd C:\Users\Administrator\Ticketku
 
 # Add backend submodule
-git submodule add https://github.com/your-org/fleettracker-backend.git backend
+git submodule add https://github.com/tobangado69/fleettracker-backend.git backend
 
 # Add frontend submodule
-git submodule add https://github.com/your-org/fleettracker-frontend.git frontend
+git submodule add https://github.com/tobangado69/fleettracker-frontend.git frontend
 
 # Add infrastructure submodule
-git submodule add https://github.com/your-org/fleettracker-infrastructure.git infrastructure
+git submodule add https://github.com/tobangado69/fleettracker-infrastructure.git infrastructure
 
 # Add docs submodule (move existing docs)
-git submodule add https://github.com/your-org/fleettracker-docs.git docs-new
+git submodule add https://github.com/tobangado69/fleettracker-docs.git docs-new
 # Note: You'll need to move existing docs/ content to the submodule
 
 # Add shared submodule
-git submodule add https://github.com/your-org/fleettracker-shared.git shared
+git submodule add https://github.com/tobangado69/fleettracker-shared.git shared
 ```
 
 ### Step 3: Configure Submodule Branches
@@ -100,7 +100,7 @@ This enables:
 
 ```bash
 # Clone repository with all submodules
-git clone --recursive https://github.com/your-org/fleettracker-pro.git
+git clone --recursive https://github.com/tobangado69/fleettracker-pro.git
 
 # Update all submodules to latest commits
 git submodule update --remote

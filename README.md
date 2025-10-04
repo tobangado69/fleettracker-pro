@@ -79,7 +79,7 @@ FleetTracker Pro is a comprehensive SaaS application designed specifically for I
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-org/fleettracker-pro.git
+   git clone https://github.com/tobangado69/fleettracker-pro.git
    cd fleettracker-pro
    ```
 
@@ -130,9 +130,9 @@ FleetTracker Pro is a comprehensive SaaS application designed specifically for I
 
 ```
 fleettracker-pro/
-├── backend/                 # Go backend application
-│   ├── cmd/server/         # Application entry point
-│   ├── internal/           # Private application code
+├── backend/               # Go backend application
+│   ├── cmd/server/        # Application entry point
+│   ├── internal/          # Private application code
 │   │   ├── auth/          # Authentication service
 │   │   ├── vehicle/       # Vehicle management
 │   │   ├── tracking/      # GPS tracking service
@@ -141,7 +141,7 @@ fleettracker-pro/
 │   ├── pkg/               # Public library code
 │   ├── migrations/        # Database migrations
 │   └── docs/              # API documentation
-├── frontend/               # React frontend application
+├── frontend/              # React frontend application
 │   ├── src/
 │   │   ├── components/    # Reusable UI components
 │   │   ├── pages/         # Page components
@@ -150,10 +150,10 @@ fleettracker-pro/
 │   │   ├── stores/        # State management
 │   │   └── types/         # TypeScript type definitions
 │   └── public/            # Static assets
-├── docs/                   # Project documentation
+├── docs/                  # Project documentation
 │   ├── PRD.md             # Product Requirements Document
 │   └── technical-implementation-guide.md
-├── specs/                  # SDD specifications
+├── specs/                 # SDD specifications
 ├── docker-compose.yml     # Development environment
 ├── Dockerfile             # Production container
 └── README.md              # This file
@@ -323,8 +323,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Support
 
 - **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/your-org/fleettracker-pro/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/fleettracker-pro/discussions)
+- **Issues**: [GitHub Issues](https://github.com/tobangado69/fleettracker-pro/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/tobangado69/fleettracker-pro/discussions)
 - **Email**: support@fleettracker.id
 
 ## 🏆 Success Metrics
