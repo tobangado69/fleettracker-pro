@@ -1,0 +1,4 @@
+[submodule "backend"]
+	path = backend
+	url = https://github.com/tobangado69/fleettracker-backend.git
+	branch = main
