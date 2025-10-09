@@ -58,14 +58,15 @@ FleetTracker Pro needs a comprehensive authentication system to secure the SaaS 
 ## 📋 Requirements
 
 ### Core Authentication Features
-1. **User Registration and Management** (UPDATED - Enhanced Security)
-   - **Public Registration**: Only for first user (becomes company owner)
-   - **Admin-Only User Creation**: Only super-admin/owner/admin can create additional users
-   - **Role Hierarchy & Cross-Company Creation**: 
-     * `super-admin` - Platform-level access
+1. **User Management - Invite-Only System** (UPDATED - No Public Registration)
+   - **NO Public Registration**: Registration endpoint removed for security
+   - **Initial Setup**: Super-admin created via database seed
+   - **Invite-Only User Creation**: Only authorized users can create new users
+   - **Role Hierarchy & User Creation**: 
+     * `super-admin` - Platform-level access (created via seed)
        - Can create ANY role (super-admin, owner, admin, operator, driver)
        - Can create users in ANY company (cross-company creation)
-       - Example: Super-admin creates admin for Company A, driver for Company B
+       - Example: Super-admin creates owner for Company A, admin for Company B
      * `owner` - Company owner (company-bound)
        - Can create: admin, operator, driver
        - Can ONLY create users in OWN company
@@ -74,10 +75,14 @@ FleetTracker Pro needs a comprehensive authentication system to secure the SaaS 
        - Can ONLY create users in OWN company
      * `operator` - Regular user, cannot create users
      * `driver` - Mobile app user, cannot create users
-   - Indonesian field validation (NPWP, phone numbers, addresses)
-   - Email verification and account activation
+   - **User Invitation Flow**:
+     * Admin creates user via POST /users with email and role
+     * User receives email with temporary password
+     * User must change password on first login
+   - Indonesian field validation (NIK, NPWP, phone numbers, addresses)
    - User profile management and updates (self-service)
    - Account deactivation (admin-only)
+   - Force password change on first login
 
 2. **Login and Session Management**
    - Secure email/password login with validation
@@ -191,33 +196,33 @@ audit_logs (
 )
 ```
 
-### API Endpoints Design (UPDATED - Enhanced Security)
+### API Endpoints Design (UPDATED - Invite-Only System)
 ```
 PUBLIC ENDPOINTS (No authentication required):
-POST   /api/v1/auth/register                    - Company owner registration ONLY
 POST   /api/v1/auth/login                       - User login
 POST   /api/v1/auth/forgot-password             - Request password reset
-POST   /api/v1/auth/reset-password              - Reset password
+POST   /api/v1/auth/reset-password              - Reset password with token
 
 AUTHENTICATED ENDPOINTS (Token required):
 POST   /api/v1/auth/logout                      - User logout
 POST   /api/v1/auth/refresh                     - Refresh access token
 GET    /api/v1/auth/profile                     - Get user profile
 PUT    /api/v1/auth/profile                     - Update user profile  
-PUT    /api/v1/auth/change-password             - Change password
-GET    /api/v1/auth/sessions                    - Get active sessions
-DELETE /api/v1/auth/sessions/:id                - Revoke session
+PUT    /api/v1/auth/change-password             - Change password (or force change on first login)
+GET    /api/v1/users/sessions                   - Get active sessions
+DELETE /api/v1/users/sessions/:id               - Revoke session
 
 ADMIN ENDPOINTS (super-admin/owner/admin only):
-POST   /api/v1/users                            - Create new user (role-based)
+POST   /api/v1/users                            - Create new user (invite-only)
 GET    /api/v1/users                            - List company users
 GET    /api/v1/users/:id                        - Get user details
 PUT    /api/v1/users/:id                        - Update user
 DELETE /api/v1/users/:id                        - Deactivate user
-PUT    /api/v1/users/:id/role                   - Change user role
-GET    /api/v1/users/:id/permissions            - Get user permissions
-POST   /api/v1/users/:id/permissions            - Grant permissions
-DELETE /api/v1/users/:id/permissions/:perm      - Revoke permission
+PUT    /api/v1/users/:id/status                 - Activate/deactivate user
+POST   /api/v1/users/:id/reset-password         - Send password reset for user
+
+REMOVED ENDPOINTS (Security enhancement):
+❌ POST   /api/v1/auth/register                  - REMOVED (no public registration)
 ```
 
 ---
@@ -256,12 +261,12 @@ DELETE /api/v1/users/:id/permissions/:perm      - Revoke permission
 
 ## 🚀 Immediate Next Actions
 
-### Phase 1: Core Authentication (Day 1)
-1. **User Registration System**
-   - `RegisterUser()` - Company-based user registration
-   - `ValidateUserData()` - Indonesian field validation
-   - `HashPassword()` - Secure password hashing
-   - `SendVerificationEmail()` - Email verification system
+### Phase 1: Initial Setup & Core Authentication (Day 1)
+1. **Initial Super-Admin Setup**
+   - `SeedSuperAdmin()` - Create initial super-admin via database seed
+   - `ValidateInitialSetup()` - Ensure super-admin exists
+   - `GenerateTemporaryPassword()` - Create secure temporary password
+   - `LogInitialCredentials()` - Log credentials for first login
 
 2. **Login and JWT Management**
    - `LoginUser()` - Secure login with validation
@@ -282,14 +287,21 @@ DELETE /api/v1/users/:id/permissions/:perm      - Revoke permission
    - `TrackFailedAttempts()` - Failed login attempt tracking
    - `GenerateResetToken()` - Secure password reset tokens
 
-### Phase 3: Role-Based Access Control (Day 2-3)
-1. **RBAC Implementation**
+### Phase 3: User Invitation & RBAC (Day 2-3)
+1. **User Invitation System**
+   - `InviteUser()` - Create user with temporary password
+   - `GenerateTemporaryPassword()` - Secure random password
+   - `SendInvitationEmail()` - Email with login credentials
+   - `ForcePasswordChange()` - Middleware to enforce password change
+   - `ValidateFirstLogin()` - Detect and handle first login
+
+2. **RBAC Implementation**
    - `AssignRole()` - Role assignment to users
    - `CheckPermission()` - Permission validation
    - `GetUserPermissions()` - User permission retrieval
    - `CompanyIsolation()` - Company-based data isolation
 
-2. **Authorization Middleware**
+3. **Authorization Middleware**
    - `RequireAuth()` - JWT authentication middleware
    - `RequireRole()` - Role-based authorization middleware
    - `RequirePermission()` - Permission-based authorization
@@ -327,7 +339,9 @@ DELETE /api/v1/users/:id/permissions/:perm      - Revoke permission
 
 ### Technical Success
 - [ ] JWT token generation and validation working correctly
-- [ ] User registration with Indonesian field validation
+- [ ] Invite-only user creation with temporary passwords
+- [ ] Force password change on first login working
+- [ ] Super-admin seed script creates initial admin
 - [ ] Secure password hashing and management
 - [ ] Role-based access control functioning properly
 - [ ] Session management with Redis integration
@@ -381,6 +395,66 @@ This feature brief will evolve during implementation:
 ---
 
 ## 📝 Changelog
+
+### 2025-10-09 (Update 4) - Invite-Only System (No Public Registration)
+**Status**: Architecture Updated
+**Changes**:
+- 🔒 **Removed Public Registration**: `/auth/register` endpoint removed
+  * Security risk: Anyone could create companies and users
+  * Violates B2B SaaS multi-tenant model
+  * No business validation for company creation
+- ✅ **Invite-Only System Implemented**: 
+  * Super-admin created via database seed (`admin@fleettracker.id`)
+  * All other users created via `POST /users` by authorized admins
+  * Users receive email with temporary password
+  * Force password change on first login
+- ✅ **Initial Setup Flow**:
+  * Step 1: Run database seed → Creates super-admin
+  * Step 2: Super-admin logs in, changes password
+  * Step 3: Super-admin creates companies via admin panel
+  * Step 4: Super-admin creates owner for each company
+  * Step 5: Owner creates admin/operator/driver users
+- ✅ **User Invitation Flow**:
+  * Admin calls `POST /users` with email, role, company_id (super-admin only)
+  * System generates temporary password
+  * Email sent with login credentials
+  * User logs in, sees "must_change_password: true"
+  * User changes password before accessing system
+- ✅ **Enhanced Security**:
+  * No unauthorized company creation
+  * Business validation before user creation
+  * Subscription setup verified before access
+  * Audit trail for all user creation
+
+**Rationale**:
+- B2B SaaS model requires controlled onboarding
+- Companies should be vetted before creation
+- Subscription/payment setup required first
+- Aligns with enterprise SaaS (Salesforce, Slack, HubSpot)
+- Prevents spam/abuse from public registration
+- Better security posture (invite-only)
+
+**Implementation**:
+- ❌ **Endpoint Removed**: `POST /auth/register` (was public)
+- ✅ **New Seed**: `seeds/super_admin.go` (creates initial admin)
+- ✅ **Enhanced**: `POST /users` (invite-only user creation)
+- ✅ **New Field**: `must_change_password` (force password change)
+- ✅ **Email Service**: Send invitation emails with temp password
+
+**Database Changes**:
+```sql
+-- Add must_change_password field to users table
+ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT true;
+ALTER TABLE users ADD COLUMN last_password_change TIMESTAMPTZ;
+```
+
+**Next Priority**: 
+1. Create super-admin seed script
+2. Add "force password change" middleware
+3. Update email templates for user invitations
+4. Remove/deprecate register endpoint
+
+---
 
 ### 2025-10-08 (Update 3) - Session Management Implementation
 **Status**: Feature Complete
