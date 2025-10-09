@@ -317,7 +317,7 @@ Setiap fase memiliki checklist review yang komprehensif:
 
 ## 📝 Changelog
 
-### Version 1.0.0 (January 2025)
+### Version 1.0.0 (October 2025)
 - Initial release SDD Commands
 - Support untuk 9 core commands
 - Template system implementation
