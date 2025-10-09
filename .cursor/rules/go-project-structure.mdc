@@ -1,0 +1,375 @@
+---
+alwaysApply: true
+---
+# Go Project Structure Rules
+
+## 📁 Directory Structure
+
+Based on the current codebase structure in [backend/](mdc:backend/), follow this organization:
+
+```
+backend/
+├── cmd/                    # Application entry points
+│   ├── server/            # Main server application
+│   └── seed/              # Database seeding utilities
+├── internal/              # Private application code
+│   ├── common/            # Shared utilities and services
+│   │   ├── analytics/     # Analytics engine and services
+│   │   ├── cache/         # Caching utilities
+│   │   ├── config/        # Configuration management
+│   │   ├── database/      # Database utilities
+│   │   ├── export/        # Data export services
+│   │   ├── fleet/         # Fleet management utilities
+│   │   ├── geofencing/    # Geofencing services
+│   │   ├── jobs/          # Background job processing
+│   │   ├── middleware/    # HTTP middleware
+│   │   ├── monitoring/    # Monitoring and metrics
+│   │   ├── ratelimit/     # Rate limiting
+│   │   ├── realtime/      # Real-time features
+│   │   ├── repository/    # Repository patterns
+│   │   └── testutil/      # Testing utilities
+│   ├── driver/            # Driver management
+│   ├── payment/           # Payment processing
+│   ├── tracking/          # GPS tracking
+│   └── vehicle/           # Vehicle management
+├── pkg/                   # Public library code
+│   ├── errors/            # Error definitions
+│   └── models/            # Data models
+├── migrations/            # Database migrations
+├── seeds/                 # Database seeding
+└── docs/                  # API documentation
+```
+
+## 🏗️ Package Organization
+
+### Internal Packages
+- **Use `internal/` for private code** - Cannot be imported by external projects
+- **Group by domain** - Each business domain gets its own package
+- **Shared utilities in `common/`** - Reusable components across domains
+
+### Public Packages
+- **Use `pkg/` for public APIs** - Can be imported by external projects
+- **Keep interfaces stable** - Follow semantic versioning
+- **Document public APIs** - All exported functions must be documented
+
+## 📦 Package Naming
+
+### Domain Packages
+```go
+// ✅ GOOD: Clear, descriptive package names
+package driver      // Driver management
+package vehicle     // Vehicle management
+package tracking    // GPS tracking
+package payment     // Payment processing
+package analytics   // Analytics and reporting
+package geofencing  // Geofencing services
+```
+
+### Utility Packages
+```go
+// ✅ GOOD: Generic utility names
+package cache       // Caching utilities
+package config      // Configuration management
+package middleware  // HTTP middleware
+package repository  // Repository patterns
+```
+
+## 🔧 File Organization
+
+### Per-Package File Structure
+```
+internal/driver/
+├── handler.go          # HTTP handlers
+├── service.go          # Business logic
+├── service_test.go     # Service tests
+├── optimized_queries.go # Database optimizations
+└── types.go           # Package-specific types (if needed)
+```
+
+### File Naming Conventions
+- **`handler.go`** - HTTP request handlers
+- **`service.go`** - Business logic services
+- **`*_test.go`** - Test files
+- **`*_optimized.go`** - Performance-optimized implementations
+- **`types.go`** - Type definitions (only if needed)
+
+## 🎯 Import Organization
+
+### Import Groups
+```go
+// ✅ GOOD: Organized imports with proper grouping
+package driver
+
+import (
+    // Standard library
+    "context"
+    "fmt"
+    "net/http"
+    "time"
+    
+    // Third-party packages
+    "github.com/gin-gonic/gin"
+    "github.com/go-playground/validator/v10"
+    "gorm.io/gorm"
+    
+    // Internal packages
+    "github.com/tobangado69/fleettracker-pro/backend/internal/common/middleware"
+    "github.com/tobangado69/fleettracker-pro/backend/pkg/errors"
+    "github.com/tobangado69/fleettracker-pro/backend/pkg/models"
+)
+```
+
+### Import Rules
+1. **Group imports** - Standard, third-party, internal
+2. **Sort alphabetically** - Within each group
+3. **Use full paths** - No relative imports
+4. **Remove unused imports** - Use `goimports` to maintain
+
+## 🏛️ Architecture Patterns
+
+### Handler-Service-Repository Pattern
+```go
+// Handler layer - HTTP concerns only
+type Handler struct {
+    service   *Service
+    validator *validator.Validate
+}
+
+// Service layer - Business logic
+type Service struct {
+    repo   Repository
+    cache  *redis.Client
+    logger *slog.Logger
+}
+
+// Repository layer - Data access
+type Repository interface {
+    Create(ctx context.Context, entity *Entity) error
+    GetByID(ctx context.Context, id string) (*Entity, error)
+    Update(ctx context.Context, id string, entity *Entity) error
+    Delete(ctx context.Context, id string) error
+}
+```
+
+### Dependency Injection
+```go
+// ✅ GOOD: Constructor-based dependency injection
+func NewHandler(service *Service) *Handler {
+    return &Handler{
+        service:   service,
+        validator: validator.New(),
+    }
+}
+
+func NewService(repo Repository, cache *redis.Client, logger *slog.Logger) *Service {
+    return &Service{
+        repo:   repo,
+        cache:  cache,
+        logger: logger,
+    }
+}
+```
+
+## 📊 Model Organization
+
+### Model Location
+- **Domain models** - In respective domain packages
+- **Shared models** - In `pkg/models/`
+- **Request/Response types** - In handler files or separate types files
+
+### Model Structure
+```go
+// ✅ GOOD: Clear model structure with proper tags
+type User struct {
+    ID        string    `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+    Name      string    `json:"name" gorm:"type:varchar(255);not null"`
+    Email     string    `json:"email" gorm:"type:varchar(255);unique;not null"`
+    CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
+    UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+// ✅ GOOD: Request/Response types
+type CreateUserRequest struct {
+    Name  string `json:"name" validate:"required,min=2,max=100"`
+    Email string `json:"email" validate:"required,email"`
+}
+
+type UserResponse struct {
+    ID    string `json:"id"`
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+```
+
+## 🧪 Testing Organization
+
+### Test File Structure
+```go
+// ✅ GOOD: Comprehensive test organization
+package driver
+
+import (
+    "context"
+    "testing"
+    "time"
+    
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
+    "go.uber.org/mock/gomock"
+    
+    "github.com/tobangado69/fleettracker-pro/backend/internal/driver/mocks"
+)
+
+func TestService_CreateDriver(t *testing.T) {
+    // Test implementation
+}
+
+func TestService_CreateDriver_Integration(t *testing.T) {
+    // Integration test implementation
+}
+
+func BenchmarkService_CreateDriver(b *testing.B) {
+    // Benchmark implementation
+}
+```
+
+### Test Organization Rules
+1. **Unit tests** - Test individual functions in isolation
+2. **Integration tests** - Test with real database
+3. **Benchmark tests** - Performance testing
+4. **Table-driven tests** - For multiple test cases
+5. **Mock external dependencies** - Use gomock for interfaces
+
+## 🔧 Configuration Management
+
+### Configuration Structure
+```go
+// ✅ GOOD: Centralized configuration
+type Config struct {
+    Server   ServerConfig   `yaml:"server"`
+    Database DatabaseConfig `yaml:"database"`
+    Redis    RedisConfig    `yaml:"redis"`
+    Logging  LoggingConfig  `yaml:"logging"`
+}
+
+type ServerConfig struct {
+    Port         int           `yaml:"port" default:"8080"`
+    ReadTimeout  time.Duration `yaml:"read_timeout" default:"30s"`
+    WriteTimeout time.Duration `yaml:"write_timeout" default:"30s"`
+}
+```
+
+### Environment Variables
+```go
+// ✅ GOOD: Environment-based configuration
+func LoadConfig() (*Config, error) {
+    config := &Config{}
+    
+    // Load from file
+    if err := config.LoadFromFile("config.yaml"); err != nil {
+        return nil, fmt.Errorf("failed to load config file: %w", err)
+    }
+    
+    // Override with environment variables
+    if port := os.Getenv("SERVER_PORT"); port != "" {
+        if p, err := strconv.Atoi(port); err == nil {
+            config.Server.Port = p
+        }
+    }
+    
+    return config, nil
+}
+```
+
+## 📝 Documentation Structure
+
+### Package Documentation
+```go
+// Package driver provides driver management functionality including creation,
+// retrieval, updating, and deletion of driver records.
+//
+// The package follows the repository pattern with a service layer for business logic
+// and proper error handling throughout.
+//
+// Example usage:
+//   service := driver.NewService(repo, cache, logger)
+//   driver, err := service.CreateDriver(ctx, &CreateDriverRequest{
+//       Name:  "John Doe",
+//       Email: "john@example.com",
+//   })
+package driver
+```
+
+### API Documentation
+- **Use Swagger annotations** - For API documentation
+- **Document all endpoints** - Request/response examples
+- **Include error responses** - All possible error codes
+- **Provide usage examples** - Real-world scenarios
+
+## 🚀 Build and Deployment
+
+### Makefile Structure
+```makefile
+# ✅ GOOD: Comprehensive Makefile
+.PHONY: build test lint clean docker
+
+build:
+	go build -o bin/server cmd/server/main.go
+
+test:
+	go test -v -race -coverprofile=coverage.out ./...
+
+lint:
+	golangci-lint run
+
+clean:
+	rm -rf bin/
+	go clean
+
+docker:
+	docker build -t fleettracker-pro .
+
+run:
+	go run cmd/server/main.go
+```
+
+### Docker Organization
+```dockerfile
+# ✅ GOOD: Multi-stage Docker build
+FROM golang:1.21-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -o server cmd/server/main.go
+
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates
+WORKDIR /root/
+COPY --from=builder /app/server .
+CMD ["./server"]
+```
+
+## 🎯 Best Practices
+
+### Code Organization
+1. **Keep packages focused** - Single responsibility per package
+2. **Minimize package dependencies** - Avoid circular imports
+3. **Use interfaces** - For testability and flexibility
+4. **Group related functionality** - Keep related code together
+5. **Separate concerns** - Handler, service, repository layers
+
+### File Size Guidelines
+- **Handler files** - Maximum 500 lines
+- **Service files** - Maximum 1000 lines
+- **Model files** - Maximum 300 lines
+- **Test files** - No limit, but keep focused
+
+### Naming Conventions
+- **Packages** - Lowercase, single word
+- **Types** - PascalCase
+- **Functions** - PascalCase for exported, camelCase for private
+- **Variables** - camelCase
+- **Constants** - PascalCase or UPPER_CASE
+
+Remember: **Good structure enables maintainability, testability, and scalability.**

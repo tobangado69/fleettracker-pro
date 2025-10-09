@@ -1,0 +1,621 @@
+---
+alwaysApply: true
+---
+# Go Performance Optimization Rules
+
+## 🚀 Core Performance Principles
+
+### Memory Efficiency First
+- **Minimize allocations** - Reuse objects, use object pools
+- **Avoid memory leaks** - Always close resources, use defer
+- **Profile memory usage** - Use pprof for memory analysis
+- **Optimize hot paths** - Focus on frequently called code
+
+### Algorithm Optimization
+- **Choose optimal data structures** - Maps for O(1) lookups, slices for iteration
+- **Avoid unnecessary copying** - Use pointers, avoid value copying
+- **Batch operations** - Process data in chunks
+- **Use concurrent processing** - Leverage goroutines effectively
+
+## 🧠 Memory Management
+
+### Object Pooling
+```go
+// ✅ Optimal: Object pool for frequently allocated objects
+var userPool = sync.Pool{
+    New: func() interface{} {
+        return &User{}
+    },
+}
+
+func GetUser() *User {
+    return userPool.Get().(*User)
+}
+
+func PutUser(u *User) {
+    // Reset the object
+    u.ID = ""
+    u.Name = ""
+    u.Email = ""
+    userPool.Put(u)
+}
+
+// Usage
+func ProcessUsers(users []UserData) {
+    for _, userData := range users {
+        user := GetUser()
+        user.ID = userData.ID
+        user.Name = userData.Name
+        user.Email = userData.Email
+        
+        // Process user...
+        
+        PutUser(user) // Return to pool
+    }
+}
+```
+
+### String Optimization
+```go
+// ✅ Optimal: Use strings.Builder for string concatenation
+func BuildQuery(filters map[string]string) string {
+    var builder strings.Builder
+    builder.Grow(256) // Pre-allocate capacity
+    
+    builder.WriteString("SELECT * FROM users WHERE ")
+    
+    first := true
+    for key, value := range filters {
+        if !first {
+            builder.WriteString(" AND ")
+        }
+        builder.WriteString(key)
+        builder.WriteString(" = '")
+        builder.WriteString(value)
+        builder.WriteString("'")
+        first = false
+    }
+    
+    return builder.String()
+}
+
+// ❌ BAD: String concatenation in loop
+func BuildQueryBad(filters map[string]string) string {
+    query := "SELECT * FROM users WHERE "
+    first := true
+    for key, value := range filters {
+        if !first {
+            query += " AND " // Creates new string each time
+        }
+        query += key + " = '" + value + "'"
+        first = false
+    }
+    return query
+}
+```
+
+### Slice Optimization
+```go
+// ✅ Optimal: Pre-allocate slice capacity
+func ProcessItems(items []Item) []ProcessedItem {
+    result := make([]ProcessedItem, 0, len(items)) // Pre-allocate capacity
+    
+    for _, item := range items {
+        if item.IsValid() {
+            processed := ProcessItem(item)
+            result = append(result, processed)
+        }
+    }
+    
+    return result
+}
+
+// ✅ Optimal: Use slice tricks for efficient operations
+func RemoveItem(slice []Item, index int) []Item {
+    return append(slice[:index], slice[index+1:]...)
+}
+
+func InsertItem(slice []Item, index int, item Item) []Item {
+    slice = append(slice, Item{}) // Add space
+    copy(slice[index+1:], slice[index:]) // Shift elements
+    slice[index] = item
+    return slice
+}
+```
+
+## 🔄 Concurrent Processing
+
+### Goroutine Pools
+```go
+// ✅ Optimal: Worker pool pattern
+type WorkerPool struct {
+    workers    int
+    jobs       chan Job
+    results    chan Result
+    wg         sync.WaitGroup
+}
+
+func NewWorkerPool(workers int) *WorkerPool {
+    return &WorkerPool{
+        workers: workers,
+        jobs:    make(chan Job, workers*2),
+        results: make(chan Result, workers*2),
+    }
+}
+
+func (wp *WorkerPool) Start() {
+    for i := 0; i < wp.workers; i++ {
+        wp.wg.Add(1)
+        go wp.worker()
+    }
+}
+
+func (wp *WorkerPool) worker() {
+    defer wp.wg.Done()
+    
+    for job := range wp.jobs {
+        result := wp.processJob(job)
+        wp.results <- result
+    }
+}
+
+func (wp *WorkerPool) Submit(job Job) {
+    wp.jobs <- job
+}
+
+func (wp *WorkerPool) Close() {
+    close(wp.jobs)
+    wp.wg.Wait()
+    close(wp.results)
+}
+```
+
+### Channel Optimization
+```go
+// ✅ Optimal: Buffered channels for better performance
+func ProcessDataConcurrently(data []Data) []Result {
+    const numWorkers = 10
+    const bufferSize = 100
+    
+    jobs := make(chan Data, bufferSize)
+    results := make(chan Result, bufferSize)
+    
+    // Start workers
+    for i := 0; i < numWorkers; i++ {
+        go func() {
+            for item := range jobs {
+                result := ProcessItem(item)
+                results <- result
+            }
+        }()
+    }
+    
+    // Send jobs
+    go func() {
+        for _, item := range data {
+            jobs <- item
+        }
+        close(jobs)
+    }()
+    
+    // Collect results
+    var allResults []Result
+    for i := 0; i < len(data); i++ {
+        result := <-results
+        allResults = append(allResults, result)
+    }
+    
+    return allResults
+}
+```
+
+### Context Usage
+```go
+// ✅ Optimal: Proper context usage for cancellation
+func ProcessWithTimeout(ctx context.Context, data []Data) ([]Result, error) {
+    ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+    defer cancel()
+    
+    results := make([]Result, 0, len(data))
+    
+    for _, item := range data {
+        select {
+        case <-ctx.Done():
+            return nil, ctx.Err()
+        default:
+            result, err := ProcessItemWithContext(ctx, item)
+            if err != nil {
+                return nil, fmt.Errorf("failed to process item: %w", err)
+            }
+            results = append(results, result)
+        }
+    }
+    
+    return results, nil
+}
+```
+
+## 🗄️ Database Optimization
+
+### Connection Pooling
+```go
+// ✅ Optimal: Proper database configuration
+func SetupDatabase() (*gorm.DB, error) {
+    db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+        Logger: logger.Default.LogMode(logger.Silent),
+        NowFunc: func() time.Time {
+            return time.Now().UTC()
+        },
+    })
+    if err != nil {
+        return nil, fmt.Errorf("failed to connect to database: %w", err)
+    }
+    
+    sqlDB, err := db.DB()
+    if err != nil {
+        return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+    }
+    
+    // Configure connection pool
+    sqlDB.SetMaxIdleConns(10)
+    sqlDB.SetMaxOpenConns(100)
+    sqlDB.SetConnMaxLifetime(time.Hour)
+    
+    return db, nil
+}
+```
+
+### Query Optimization
+```go
+// ✅ Optimal: Efficient queries with proper indexing
+func (r *userRepository) GetUsersByCompany(ctx context.Context, companyID string, limit, offset int) ([]*User, error) {
+    var users []*User
+    
+    // Use index on company_id
+    err := r.db.WithContext(ctx).
+        Where("company_id = ?", companyID).
+        Preload("Profile"). // Eager load related data
+        Order("created_at DESC").
+        Limit(limit).
+        Offset(offset).
+        Find(&users).Error
+    
+    if err != nil {
+        return nil, fmt.Errorf("failed to get users: %w", err)
+    }
+    
+    return users, nil
+}
+
+// ✅ Optimal: Batch operations
+func (r *userRepository) CreateUsersBatch(ctx context.Context, users []*User) error {
+    const batchSize = 100
+    
+    for i := 0; i < len(users); i += batchSize {
+        end := i + batchSize
+        if end > len(users) {
+            end = len(users)
+        }
+        
+        batch := users[i:end]
+        if err := r.db.WithContext(ctx).Create(&batch).Error; err != nil {
+            return fmt.Errorf("failed to create user batch: %w", err)
+        }
+    }
+    
+    return nil
+}
+```
+
+### Transaction Optimization
+```go
+// ✅ Optimal: Efficient transaction usage
+func (s *userService) CreateUserWithProfile(ctx context.Context, req *CreateUserRequest) (*User, error) {
+    var user *User
+    
+    err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+        // Create user
+        user = &User{
+            Name:  req.Name,
+            Email: req.Email,
+        }
+        
+        if err := tx.Create(user).Error; err != nil {
+            return fmt.Errorf("failed to create user: %w", err)
+        }
+        
+        // Create profile in same transaction
+        profile := &Profile{
+            UserID: user.ID,
+            Bio:    req.Bio,
+        }
+        
+        if err := tx.Create(profile).Error; err != nil {
+            return fmt.Errorf("failed to create profile: %w", err)
+        }
+        
+        return nil
+    })
+    
+    if err != nil {
+        return nil, err
+    }
+    
+    return user, nil
+}
+```
+
+## 🚀 Caching Strategies
+
+### Multi-Level Caching
+```go
+// ✅ Optimal: L1 (memory) + L2 (Redis) caching
+type CacheService struct {
+    memoryCache *cache.Cache
+    redisClient *redis.Client
+    logger      *slog.Logger
+}
+
+func (c *CacheService) Get(ctx context.Context, key string) (interface{}, error) {
+    // L1 Cache: Memory
+    if value, found := c.memoryCache.Get(key); found {
+        c.logger.Debug("Memory cache hit", "key", key)
+        return value, nil
+    }
+    
+    // L2 Cache: Redis
+    value, err := c.redisClient.Get(ctx, key).Result()
+    if err == nil {
+        c.logger.Debug("Redis cache hit", "key", key)
+        
+        // Store in memory cache
+        c.memoryCache.Set(key, value, 5*time.Minute)
+        return value, nil
+    }
+    
+    c.logger.Debug("Cache miss", "key", key)
+    return nil, cache.ErrNotFound
+}
+
+func (c *CacheService) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+    // Set in Redis
+    if err := c.redisClient.Set(ctx, key, value, ttl).Err(); err != nil {
+        return fmt.Errorf("failed to set Redis cache: %w", err)
+    }
+    
+    // Set in memory cache (shorter TTL)
+    memoryTTL := ttl
+    if memoryTTL > 5*time.Minute {
+        memoryTTL = 5 * time.Minute
+    }
+    c.memoryCache.Set(key, value, memoryTTL)
+    
+    return nil
+}
+```
+
+### Cache-Aside Pattern
+```go
+// ✅ Optimal: Cache-aside pattern implementation
+func (s *userService) GetUser(ctx context.Context, userID string) (*User, error) {
+    // Try cache first
+    cachedUser, err := s.cache.Get(ctx, fmt.Sprintf("user:%s", userID))
+    if err == nil {
+        return cachedUser.(*User), nil
+    }
+    
+    // Cache miss - get from database
+    user, err := s.repo.GetByID(ctx, userID)
+    if err != nil {
+        return nil, fmt.Errorf("failed to get user: %w", err)
+    }
+    
+    // Store in cache
+    if err := s.cache.Set(ctx, fmt.Sprintf("user:%s", userID), user, time.Hour); err != nil {
+        s.logger.Warn("Failed to cache user", "userID", userID, "error", err)
+    }
+    
+    return user, nil
+}
+```
+
+## 📊 Performance Monitoring
+
+### Profiling Integration
+```go
+// ✅ Optimal: Built-in profiling support
+import _ "net/http/pprof"
+
+func setupProfiling() {
+    go func() {
+        log.Println("Starting pprof server on :6060")
+        log.Println(http.ListenAndServe("localhost:6060", nil))
+    }()
+}
+
+// Memory profiling
+func profileMemory() {
+    f, err := os.Create("mem.prof")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer f.Close()
+    
+    runtime.GC()
+    if err := pprof.WriteHeapProfile(f); err != nil {
+        log.Fatal(err)
+    }
+}
+
+// CPU profiling
+func profileCPU() {
+    f, err := os.Create("cpu.prof")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer f.Close()
+    
+    if err := pprof.StartCPUProfile(f); err != nil {
+        log.Fatal(err)
+    }
+    defer pprof.StopCPUProfile()
+}
+```
+
+### Metrics Collection
+```go
+// ✅ Optimal: Prometheus metrics integration
+import (
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+    httpRequestsTotal = promauto.NewCounterVec(
+        prometheus.CounterOpts{
+            Name: "http_requests_total",
+            Help: "Total number of HTTP requests",
+        },
+        []string{"method", "endpoint", "status"},
+    )
+    
+    httpRequestDuration = promauto.NewHistogramVec(
+        prometheus.HistogramOpts{
+            Name: "http_request_duration_seconds",
+            Help: "HTTP request duration in seconds",
+        },
+        []string{"method", "endpoint"},
+    )
+)
+
+func metricsMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        start := time.Now()
+        
+        c.Next()
+        
+        duration := time.Since(start).Seconds()
+        status := strconv.Itoa(c.Writer.Status())
+        
+        httpRequestsTotal.WithLabelValues(c.Request.Method, c.FullPath(), status).Inc()
+        httpRequestDuration.WithLabelValues(c.Request.Method, c.FullPath()).Observe(duration)
+    }
+}
+```
+
+## 🧪 Performance Testing
+
+### Benchmark Tests
+```go
+// ✅ Optimal: Comprehensive benchmark testing
+func BenchmarkUserService_CreateUser(b *testing.B) {
+    service := setupTestService()
+    req := &CreateUserRequest{
+        Name:  "Test User",
+        Email: "test@example.com",
+    }
+    
+    b.ResetTimer()
+    b.RunParallel(func(pb *testing.PB) {
+        for pb.Next() {
+            _, err := service.CreateUser(context.Background(), req)
+            if err != nil {
+                b.Fatal(err)
+            }
+        }
+    })
+}
+
+func BenchmarkUserService_GetUser(b *testing.B) {
+    service := setupTestService()
+    userID := createTestUser(service)
+    
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        _, err := service.GetUser(context.Background(), userID)
+        if err != nil {
+            b.Fatal(err)
+        }
+    }
+}
+```
+
+### Load Testing
+```go
+// ✅ Optimal: Load testing utilities
+func TestUserService_LoadTest(t *testing.T) {
+    service := setupTestService()
+    
+    const numGoroutines = 100
+    const requestsPerGoroutine = 100
+    
+    var wg sync.WaitGroup
+    errors := make(chan error, numGoroutines*requestsPerGoroutine)
+    
+    start := time.Now()
+    
+    for i := 0; i < numGoroutines; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            
+            for j := 0; j < requestsPerGoroutine; j++ {
+                req := &CreateUserRequest{
+                    Name:  fmt.Sprintf("User %d-%d", i, j),
+                    Email: fmt.Sprintf("user%d-%d@example.com", i, j),
+                }
+                
+                _, err := service.CreateUser(context.Background(), req)
+                if err != nil {
+                    errors <- err
+                }
+            }
+        }()
+    }
+    
+    wg.Wait()
+    close(errors)
+    
+    duration := time.Since(start)
+    totalRequests := numGoroutines * requestsPerGoroutine
+    
+    t.Logf("Processed %d requests in %v", totalRequests, duration)
+    t.Logf("Requests per second: %.2f", float64(totalRequests)/duration.Seconds())
+    
+    // Check for errors
+    var errorCount int
+    for err := range errors {
+        t.Errorf("Request failed: %v", err)
+        errorCount++
+    }
+    
+    if errorCount > 0 {
+        t.Fatalf("Load test failed with %d errors", errorCount)
+    }
+}
+```
+
+## 🎯 Performance Guidelines
+
+### General Rules
+1. **Profile before optimizing** - Use pprof to identify bottlenecks
+2. **Measure, don't guess** - Benchmark your changes
+3. **Optimize hot paths** - Focus on frequently called code
+4. **Use appropriate data structures** - Choose the right tool for the job
+5. **Avoid premature optimization** - But don't ignore obvious inefficiencies
+
+### Memory Rules
+1. **Reuse objects** - Use object pools for frequently allocated objects
+2. **Pre-allocate slices** - Use `make([]T, 0, capacity)`
+3. **Avoid string concatenation in loops** - Use `strings.Builder`
+4. **Close resources** - Always use `defer` for cleanup
+5. **Monitor memory usage** - Use heap profiling
+
+### Concurrency Rules
+1. **Use worker pools** - For CPU-intensive tasks
+2. **Buffer channels appropriately** - Based on expected load
+3. **Use context for cancellation** - Proper timeout handling
+4. **Avoid goroutine leaks** - Always have a way to stop goroutines
+5. **Profile goroutine usage** - Monitor goroutine count
+
+Remember: **Performance is a feature, not an afterthought. Measure, optimize, and validate.**

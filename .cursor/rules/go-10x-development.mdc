@@ -1,0 +1,529 @@
+---
+alwaysApply: true
+---
+# 10X Go Development Rules
+
+## 🎯 Core Principles
+
+### Zero Unused Parameters Policy
+- **MANDATORY**: All function parameters MUST be used
+- **Detection**: Use `_` prefix for intentionally unused parameters
+- **Linting**: Enable `unused` and `unparam` linters
+- **Review**: Every PR must pass unused parameter checks
+
+### Performance-First Development
+- **Memory Efficiency**: Minimize allocations, use object pools for hot paths
+- **Algorithm Optimization**: Choose O(1) and O(log n) over O(n) when possible
+- **Concurrent Design**: Leverage goroutines and channels effectively
+- **Resource Management**: Always close resources, use defer appropriately
+
+## 🚀 Code Quality Standards
+
+### Function Design
+```go
+// ✅ Optimal: Clear parameters, proper error handling
+func ProcessUserData(ctx context.Context, userID string, data *UserData) (*ProcessedData, error) {
+    if userID == "" {
+        return nil, errors.New("userID cannot be empty")
+    }
+    if data == nil {
+        return nil, errors.New("data cannot be nil")
+    }
+    
+    // Process data...
+    return &ProcessedData{}, nil
+}
+
+// ❌ BAD: Unused parameters
+func ProcessUserData(ctx context.Context, userID string, _unusedData *UserData) (*ProcessedData, error) {
+    // ctx and _unusedData are unused - this is WRONG
+    return &ProcessedData{}, nil
+}
+
+// ✅ GOOD: Use underscore for intentionally unused parameters
+func ProcessUserData(_ context.Context, userID string, _ *UserData) (*ProcessedData, error) {
+    // Clear intent that context and data are intentionally unused
+    return &ProcessedData{}, nil
+}
+```
+
+### Struct Design
+```go
+// ✅ Optimal: Embedded interfaces, proper JSON tags, validation
+type UserService struct {
+    db    *gorm.DB
+    cache *redis.Client
+    logger *slog.Logger
+}
+
+// ✅ Optimal: Use pointers for optional fields, proper validation
+type CreateUserRequest struct {
+    Name     string  `json:"name" validate:"required,min=2,max=100"`
+    Email    string  `json:"email" validate:"required,email"`
+    Age      *int    `json:"age,omitempty" validate:"omitempty,min=18,max=120"`
+    Metadata map[string]interface{} `json:"metadata,omitempty"`
+}
+```
+
+### Error Handling
+```go
+// ✅ Optimal: Wrapped errors with context
+func (s *UserService) GetUser(ctx context.Context, userID string) (*User, error) {
+    user, err := s.db.WithContext(ctx).First(&User{}, "id = ?", userID).Error
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return nil, fmt.Errorf("user not found: %w", err)
+        }
+        return nil, fmt.Errorf("failed to get user %s: %w", userID, err)
+    }
+    return user, nil
+}
+
+// ✅ Optimal: Custom error types
+type ValidationError struct {
+    Field   string `json:"field"`
+    Message string `json:"message"`
+}
+
+func (e ValidationError) Error() string {
+    return fmt.Sprintf("validation failed for field %s: %s", e.Field, e.Message)
+}
+```
+
+## 🏗️ Architecture Patterns
+
+### Service Layer Pattern
+```go
+// ✅ Optimal: Interface-based design with dependency injection
+type UserService interface {
+    CreateUser(ctx context.Context, req *CreateUserRequest) (*User, error)
+    GetUser(ctx context.Context, userID string) (*User, error)
+    UpdateUser(ctx context.Context, userID string, req *UpdateUserRequest) (*User, error)
+    DeleteUser(ctx context.Context, userID string) error
+}
+
+type userService struct {
+    db     *gorm.DB
+    cache  *redis.Client
+    logger *slog.Logger
+}
+
+func NewUserService(db *gorm.DB, cache *redis.Client, logger *slog.Logger) UserService {
+    return &userService{
+        db:     db,
+        cache:  cache,
+        logger: logger,
+    }
+}
+```
+
+### Repository Pattern
+```go
+// ✅ Optimal: Generic repository with proper error handling
+type Repository[T any] interface {
+    Create(ctx context.Context, entity *T) error
+    GetByID(ctx context.Context, id string) (*T, error)
+    Update(ctx context.Context, id string, entity *T) error
+    Delete(ctx context.Context, id string) error
+    List(ctx context.Context, filters map[string]interface{}, limit, offset int) ([]*T, error)
+}
+
+type gormRepository[T any] struct {
+    db *gorm.DB
+}
+
+func NewRepository[T any](db *gorm.DB) Repository[T] {
+    return &gormRepository[T]{db: db}
+}
+```
+
+### Handler Pattern
+```go
+// ✅ Optimal: Clean handlers with proper validation and error handling
+type Handler struct {
+    service   UserService
+    validator *validator.Validate
+    logger    *slog.Logger
+}
+
+func (h *Handler) CreateUser(c *gin.Context) {
+    var req CreateUserRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        h.logger.Error("Failed to bind request", "error", err)
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+        return
+    }
+    
+    if err := h.validator.Struct(&req); err != nil {
+        h.logger.Error("Validation failed", "error", err)
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Validation failed", "details": err.Error()})
+        return
+    }
+    
+    user, err := h.service.CreateUser(c.Request.Context(), &req)
+    if err != nil {
+        h.logger.Error("Failed to create user", "error", err)
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+        return
+    }
+    
+    c.JSON(http.StatusCreated, gin.H{"data": user})
+}
+```
+
+## 🔧 Performance Optimization
+
+### Database Optimization
+```go
+// ✅ Optimal: Use transactions, proper indexing, connection pooling
+func (s *userService) CreateUserWithProfile(ctx context.Context, req *CreateUserRequest) (*User, error) {
+    return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+        // Create user
+        user := &User{
+            Name:  req.Name,
+            Email: req.Email,
+        }
+        if err := tx.Create(user).Error; err != nil {
+            return fmt.Errorf("failed to create user: %w", err)
+        }
+        
+        // Create profile
+        profile := &Profile{
+            UserID: user.ID,
+            Bio:    req.Bio,
+        }
+        if err := tx.Create(profile).Error; err != nil {
+            return fmt.Errorf("failed to create profile: %w", err)
+        }
+        
+        return nil
+    })
+}
+
+// ✅ Optimal: Use prepared statements and proper query optimization
+func (s *userService) GetUsersByCompany(ctx context.Context, companyID string, limit, offset int) ([]*User, error) {
+    var users []*User
+    err := s.db.WithContext(ctx).
+        Where("company_id = ?", companyID).
+        Preload("Profile").
+        Limit(limit).
+        Offset(offset).
+        Find(&users).Error
+    
+    if err != nil {
+        return nil, fmt.Errorf("failed to get users: %w", err)
+    }
+    
+    return users, nil
+}
+```
+
+### Caching Strategy
+```go
+// ✅ Optimal: Multi-level caching with proper invalidation
+func (s *userService) GetUser(ctx context.Context, userID string) (*User, error) {
+    // L1 Cache: Memory
+    if user, found := s.memoryCache.Get(userID); found {
+        return user.(*User), nil
+    }
+    
+    // L2 Cache: Redis
+    cachedUser, err := s.redis.Get(ctx, fmt.Sprintf("user:%s", userID)).Result()
+    if err == nil {
+        var user User
+        if err := json.Unmarshal([]byte(cachedUser), &user); err == nil {
+            s.memoryCache.Set(userID, &user, time.Minute*5)
+            return &user, nil
+        }
+    }
+    
+    // Database
+    user, err := s.db.WithContext(ctx).First(&User{}, "id = ?", userID).Error
+    if err != nil {
+        return nil, fmt.Errorf("failed to get user: %w", err)
+    }
+    
+    // Cache the result
+    userJSON, _ := json.Marshal(user)
+    s.redis.Set(ctx, fmt.Sprintf("user:%s", userID), userJSON, time.Hour)
+    s.memoryCache.Set(userID, user, time.Minute*5)
+    
+    return user, nil
+}
+```
+
+### Concurrent Processing
+```go
+// ✅ Optimal: Worker pools for CPU-intensive tasks
+func (s *userService) ProcessUsersBatch(ctx context.Context, userIDs []string) error {
+    const numWorkers = 10
+    jobs := make(chan string, len(userIDs))
+    results := make(chan error, len(userIDs))
+    
+    // Start workers
+    for i := 0; i < numWorkers; i++ {
+        go func() {
+            for userID := range jobs {
+                if err := s.processUser(ctx, userID); err != nil {
+                    results <- fmt.Errorf("failed to process user %s: %w", userID, err)
+                    return
+                }
+                results <- nil
+            }
+        }()
+    }
+    
+    // Send jobs
+    for _, userID := range userIDs {
+        jobs <- userID
+    }
+    close(jobs)
+    
+    // Collect results
+    for i := 0; i < len(userIDs); i++ {
+        if err := <-results; err != nil {
+            return err
+        }
+    }
+    
+    return nil
+}
+```
+
+## 🧪 Testing Standards
+
+### Unit Testing
+```go
+// ✅ Optimal: Table-driven tests with proper mocking
+func TestUserService_CreateUser(t *testing.T) {
+    tests := []struct {
+        name        string
+        request     *CreateUserRequest
+        setupMock   func(*mocks.MockUserRepository)
+        expectedErr error
+    }{
+        {
+            name: "successful user creation",
+            request: &CreateUserRequest{
+                Name:  "John Doe",
+                Email: "john@example.com",
+            },
+            setupMock: func(m *mocks.MockUserRepository) {
+                m.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+            },
+            expectedErr: nil,
+        },
+        {
+            name: "invalid email",
+            request: &CreateUserRequest{
+                Name:  "John Doe",
+                Email: "invalid-email",
+            },
+            setupMock: func(m *mocks.MockUserRepository) {
+                // No mock setup needed for validation failure
+            },
+            expectedErr: errors.New("validation failed"),
+        },
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            ctrl := gomock.NewController(t)
+            defer ctrl.Finish()
+            
+            mockRepo := mocks.NewMockUserRepository(ctrl)
+            tt.setupMock(mockRepo)
+            
+            service := NewUserService(mockRepo, nil, slog.Default())
+            _, err := service.CreateUser(context.Background(), tt.request)
+            
+            if tt.expectedErr != nil {
+                assert.Error(t, err)
+                assert.Contains(t, err.Error(), tt.expectedErr.Error())
+            } else {
+                assert.NoError(t, err)
+            }
+        })
+    }
+}
+```
+
+### Integration Testing
+```go
+// ✅ Optimal: Test with real database, proper cleanup
+func TestUserService_Integration(t *testing.T) {
+    db := setupTestDB(t)
+    defer cleanupTestDB(t, db)
+    
+    service := NewUserService(db, nil, slog.Default())
+    
+    req := &CreateUserRequest{
+        Name:  "Test User",
+        Email: "test@example.com",
+    }
+    
+    user, err := service.CreateUser(context.Background(), req)
+    require.NoError(t, err)
+    assert.Equal(t, req.Name, user.Name)
+    assert.Equal(t, req.Email, user.Email)
+    assert.NotEmpty(t, user.ID)
+}
+```
+
+## 📝 Documentation Standards
+
+### Function Documentation
+```go
+// CreateUser creates a new user with the provided information.
+// It validates the request, checks for duplicate emails, and stores the user in the database.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - req: User creation request containing name, email, and optional fields
+//
+// Returns:
+//   - *User: The created user with generated ID and timestamps
+//   - error: Validation error, duplicate email error, or database error
+//
+// Example:
+//   user, err := service.CreateUser(ctx, &CreateUserRequest{
+//       Name:  "John Doe",
+//       Email: "john@example.com",
+//   })
+func (s *userService) CreateUser(ctx context.Context, req *CreateUserRequest) (*User, error) {
+    // Implementation...
+}
+```
+
+### Package Documentation
+```go
+// Package user provides user management functionality including creation,
+// retrieval, updating, and deletion of user records.
+//
+// The package follows the repository pattern with a service layer for business logic
+// and proper error handling throughout.
+//
+// Example usage:
+//   service := user.NewService(db, cache, logger)
+//   user, err := service.CreateUser(ctx, &CreateUserRequest{
+//       Name:  "John Doe",
+//       Email: "john@example.com",
+//   })
+package user
+```
+
+## 🔍 Linting and Code Quality
+
+### Required Linters
+```bash
+# Install required linters
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+go install honnef.co/go/tools/cmd/staticcheck@latest
+
+# Configuration in .golangci.yml
+linters:
+  enable:
+    - unused      # Detect unused parameters and variables
+    - unparam     # Detect unused function parameters
+    - ineffassign # Detect ineffectual assignments
+    - deadcode    # Detect dead code
+    - varcheck    # Detect unused global variables and constants
+    - structcheck # Detect unused struct fields
+    - errcheck    # Check error handling
+    - gosimple    # Suggest simplifications
+    - govet       # Go vet
+    - staticcheck # Static analysis
+    - gosec       # Security issues
+    - goconst     # Detect repeated strings
+    - gocritic    # Most opinionated linter
+    - gocyclo     # Cyclomatic complexity
+    - gofmt       # Format checking
+    - goimports   # Import organization
+```
+
+### Pre-commit Hooks
+```bash
+#!/bin/bash
+# .git/hooks/pre-commit
+
+# Run linters
+golangci-lint run --fix
+
+# Run tests
+go test ./...
+
+# Check for unused parameters specifically
+golangci-lint run --enable=unused,unparam
+```
+
+## 🚨 Unused Parameter Detection Rules
+
+### Mandatory Checks
+1. **All function parameters must be used** - No exceptions
+2. **Use `_` prefix for intentionally unused parameters** - Makes intent clear
+3. **Review all function signatures** - Ensure parameters serve a purpose
+4. **Remove unused parameters** - Don't keep "for future use" parameters
+
+### Examples of Correct Usage
+```go
+// ✅ GOOD: All parameters used
+func ProcessData(ctx context.Context, data []byte, options *Options) error {
+    if len(data) == 0 {
+        return errors.New("data cannot be empty")
+    }
+    
+    // Use context for cancellation
+    select {
+    case <-ctx.Done():
+        return ctx.Err()
+    default:
+    }
+    
+    // Use options for configuration
+    if options.Validate {
+        return validateData(data)
+    }
+    
+    return processData(data)
+}
+
+// ✅ GOOD: Intentionally unused parameters marked with underscore
+func HandleWebhook(_ context.Context, _ *http.Request, payload []byte) error {
+    // Context and request are intentionally unused
+    return processWebhookPayload(payload)
+}
+
+// ❌ BAD: Unused parameters without underscore
+func HandleWebhook(ctx context.Context, req *http.Request, payload []byte) error {
+    // ctx and req are unused - this will fail linting
+    return processWebhookPayload(payload)
+}
+```
+
+### Linter Configuration
+```yaml
+# .golangci.yml
+linters-settings:
+  unused:
+    check-exported: true
+  unparam:
+    check-exported: true
+    ignore: [] # Don't ignore any unused parameters
+```
+
+## 🎯 Success Metrics
+
+### Code Quality Metrics
+- **Zero unused parameters** - 100% compliance required
+- **Test coverage** - Minimum 80% for business logic
+- **Cyclomatic complexity** - Maximum 10 per function
+- **Function length** - Maximum 50 lines per function
+- **File length** - Maximum 500 lines per file
+
+### Performance Metrics
+- **Response time** - P95 < 100ms for API endpoints
+- **Memory usage** - No memory leaks, efficient allocation
+- **Database queries** - N+1 query prevention
+- **Concurrent processing** - Proper goroutine management
+
+Remember: **Every parameter must have a purpose. Every function must be efficient. Every line must be necessary.**
