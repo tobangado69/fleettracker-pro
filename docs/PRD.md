@@ -210,9 +210,13 @@ To provide Indonesian fleet managers with a powerful, user-friendly platform tha
 - **Mobile Performance**: <3 seconds app launch time
 
 ### 5.2 Security Requirements
-- **Authentication**: Multi-factor authentication for admin users
+- **Authentication**: Invite-only JWT-based authentication with 5-tier role hierarchy
+- **User Onboarding**: Super-admin seed for initial setup, no public registration
+- **Password Security**: Force password change on first login with crypto-secure temporary passwords
+- **Session Management**: Active session tracking with revocation capabilities
 - **Data Encryption**: AES-256 encryption for data at rest and in transit
-- **Access Control**: Role-based access control (RBAC)
+- **Access Control**: Role-based access control (RBAC) with privilege escalation prevention
+- **Multi-Tenant Isolation**: Strict company data segregation (defense-in-depth)
 - **Audit Logging**: Complete audit trail for all system actions
 - **Data Privacy**: GDPR-compliant data handling
 - **Indonesian Compliance**: Local data residency requirements

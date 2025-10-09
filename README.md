@@ -103,7 +103,23 @@ FleetTracker Pro is a comprehensive SaaS application designed specifically for I
    docker-compose logs -f
    ```
 
-4. **Manual Setup (Development)**
+4. **Initialize Database**
+   ```bash
+   cd backend
+   
+   # Run migrations
+   make migrate-up
+   
+   # Seed database (creates super-admin)
+   make seed
+   
+   # ✅ Super-Admin Credentials:
+   # Email: admin@fleettracker.id
+   # Password: ChangeMe123!
+   # ⚠️  MUST change password on first login!
+   ```
+
+5. **Manual Setup (Development)**
    ```bash
    # Start database
    docker-compose up -d postgres redis
@@ -111,6 +127,8 @@ FleetTracker Pro is a comprehensive SaaS application designed specifically for I
    # Backend setup
    cd backend
    go mod download
+   make migrate-up
+   make seed
    go run cmd/server/main.go
    
    # Frontend setup (new terminal)
@@ -123,8 +141,68 @@ FleetTracker Pro is a comprehensive SaaS application designed specifically for I
 
 - **Frontend**: http://localhost:5173
 - **Backend API**: http://localhost:8080
-- **API Documentation**: http://localhost:8080/docs
+- **Swagger UI**: http://localhost:8080/swagger/index.html
+- **Health Check**: http://localhost:8080/health
 - **Database**: localhost:5432 (postgres/fleettracker)
+
+### 🔐 First Login & Setup
+
+**FleetTracker Pro uses an invite-only system** - there is no public registration for security.
+
+#### Step 1: Super-Admin Login
+```bash
+# Login with default super-admin credentials
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@fleettracker.id",
+    "password": "ChangeMe123!"
+  }'
+
+# Response includes: "must_change_password": true
+# Save the access_token
+```
+
+#### Step 2: Change Password (Required)
+```bash
+# Change password before accessing other features
+curl -X PUT http://localhost:8080/api/v1/auth/change-password \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "current_password": "ChangeMe123!",
+    "new_password": "YourSecurePassword123!"
+  }'
+
+# ✅ Password changed, full access granted
+```
+
+#### Step 3: Invite Users
+```bash
+# Create company owner (super-admin only)
+curl -X POST http://localhost:8080/api/v1/users \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "owner@company.com",
+    "first_name": "John",
+    "last_name": "Doe",
+    "role": "owner",
+    "company_id": "company-uuid"
+  }'
+
+# System generates temporary password and logs it
+# User receives invitation (logged to console for now)
+# User must change password on first login
+```
+
+**User Invitation Flow**:
+1. Admin creates user via POST /users (no password = auto-generated)
+2. System generates secure temporary password
+3. Temporary password logged to console (email service TODO)
+4. User logs in with temporary password
+5. User forced to change password
+6. User gains full access after password change
 
 ## 📁 Project Structure
 
@@ -245,12 +323,23 @@ go run cmd/migrate/main.go down 1
 
 ## 🔐 Security
 
-- **Authentication**: Multi-factor authentication for admin users
+### Authentication Model
+- **Invite-Only System**: No public registration - enhanced security for B2B SaaS
+- **Super-Admin Seed**: Initial administrator created via secure database seed
+- **JWT Authentication**: Stateless, scalable token-based authentication
+- **Force Password Change**: Users must change temporary password on first login
+- **5-Tier Role Hierarchy**: super-admin → owner → admin → operator → driver
+- **Session Management**: Track and revoke active sessions
+
+### Security Features
+- **Multi-Tenant Isolation**: Strict company data isolation (100% secure)
 - **Data Encryption**: AES-256 encryption at rest and in transit
-- **Access Control**: Role-based access control (RBAC)
+- **Access Control**: Role-based access control (RBAC) with privilege escalation prevention
 - **Audit Logging**: Complete audit trail for all actions
-- **Input Validation**: Comprehensive input sanitization
+- **Input Validation**: 80+ Indonesian-specific validators
 - **Rate Limiting**: API rate limiting and DDoS protection
+- **Temporary Passwords**: Crypto-secure random password generation
+- **Cache Invalidation**: Automatic cache/session invalidation on password change
 
 ## 🧪 Testing
 

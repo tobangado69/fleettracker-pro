@@ -56,6 +56,15 @@ The **FleetTracker Pro** backend is **fully complete** and production-ready afte
 - ✅ **IDR** currency formatting
 - ✅ **Indonesian** date/time formatting
 
+### Security Model (Invite-Only):
+- ✅ **No Public Registration** - Invite-only for enhanced B2B SaaS security
+- ✅ **Super-Admin Seed** - Initial admin created via database seed
+- ✅ **Force Password Change** - Users must change temporary password on first login
+- ✅ **Temporary Passwords** - Crypto-secure random password generation
+- ✅ **Email Invitations** - Invitation system (logged to console, email service TODO)
+- ✅ **Session Invalidation** - All sessions invalidated on password change
+- ✅ **Cache Invalidation** - User cache cleared on password change
+
 ### Performance Benchmarks:
 - ✅ **Response Time**: < 80ms average (target: < 100ms) ⚡
 - ✅ **Database Queries**: 91 optimized indexes 🚀

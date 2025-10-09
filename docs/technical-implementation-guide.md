@@ -392,12 +392,29 @@ func main() {
 }
 ```
 
-#### 3.2.2 JWT Authentication Implementation
+#### 3.2.2 JWT Authentication Implementation (Invite-Only System)
+
+**Security Model**: FleetTracker Pro uses an **invite-only** authentication system with no public registration.
+
+**Initial Setup**:
+```bash
+# Super-admin created via database seed
+make seed
+
+# Credentials:
+# Email: admin@fleettracker.id
+# Password: ChangeMe123!
+# Must change password on first login
+```
+
+**Implementation**:
 ```go
 // internal/auth/service.go
 package auth
 
 import (
+    "crypto/rand"
+    "encoding/base64"
     "errors"
     "time"
 
@@ -410,6 +427,7 @@ import (
 
 type Service struct {
     db        *gorm.DB
+    redis     *redis.Client
     jwtSecret []byte
 }
 
@@ -420,33 +438,60 @@ type Claims struct {
     jwt.RegisteredClaims
 }
 
-func NewService(db *gorm.DB, jwtSecret string) *Service {
+type UserResponse struct {
+    ID                 string `json:"id"`
+    Email              string `json:"email"`
+    Role               string `json:"role"`
+    MustChangePassword bool   `json:"must_change_password"` // NEW: Force password change flag
+    // ... other fields
+}
+
+func NewService(db *gorm.DB, redis *redis.Client, jwtSecret string) *Service {
     return &Service{
         db:        db,
+        redis:     redis,
         jwtSecret: []byte(jwtSecret),
     }
 }
 
-func (s *Service) Login(email, password string) (*models.User, string, error) {
+// Login returns user data with must_change_password flag
+func (s *Service) Login(email, password string) (*UserResponse, *TokenResponse, error) {
     var user models.User
     if err := s.db.Where("email = ? AND is_active = true", email).First(&user).Error; err != nil {
-        return nil, "", errors.New("invalid credentials")
+        return nil, nil, errors.New("invalid credentials")
     }
 
-    if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-        return nil, "", errors.New("invalid credentials")
+    // Check if account is locked
+    if user.IsAccountLocked() {
+        return nil, nil, errors.New("account locked due to failed login attempts")
     }
 
-    // Generate JWT token
-    token, err := s.generateToken(&user)
+    if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+        user.IncrementFailedAttempts()
+        s.db.Save(&user)
+        return nil, nil, errors.New("invalid credentials")
+    }
+
+    // Reset failed attempts on successful login
+    user.ResetFailedAttempts()
+    user.UpdateLastLogin()
+    s.db.Save(&user)
+
+    // Generate JWT tokens
+    tokens, err := s.generateTokens(&user)
     if err != nil {
-        return nil, "", err
+        return nil, nil, err
     }
 
-    // Update last login
-    s.db.Model(&user).Update("last_login", time.Now())
+    // Return user response with must_change_password flag
+    userResponse := &UserResponse{
+        ID:                 user.ID,
+        Email:              user.Email,
+        Role:               user.Role,
+        MustChangePassword: user.MustChangePassword, // ⚠️ Frontend uses this!
+    }
 
-    return &user, token, nil
+    return userResponse, tokens, nil
 }
 
 func (s *Service) generateToken(user *models.User) (string, error) {
@@ -480,9 +525,231 @@ func (s *Service) ValidateToken(tokenString string) (*Claims, error) {
 
     return nil, errors.New("invalid token")
 }
+
+// generateTemporaryPassword creates crypto-secure random password for user invitations
+func generateTemporaryPassword() (string, error) {
+    b := make([]byte, 16)
+    if _, err := rand.Read(b); err != nil {
+        return "", err
+    }
+    password := base64.URLEncoding.EncodeToString(b)[:16]
+    return password + "!Aa1", nil // Add complexity characters
+}
+
+// CreateUser creates new user with temporary password (invite-only)
+func (s *Service) CreateUser(req CreateUserRequest, creatorRole string) (*models.User, error) {
+    // Generate temporary password if not provided
+    password := req.Password
+    var tempPassword string
+    if password == "" {
+        tempPass, err := generateTemporaryPassword()
+        if err != nil {
+            return nil, err
+        }
+        password = tempPass
+        tempPassword = tempPass
+    }
+
+    // Hash password
+    hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+
+    // Create user with must_change_password = true
+    user := &models.User{
+        Email:              req.Email,
+        FirstName:          req.FirstName,
+        LastName:           req.LastName,
+        Role:               req.Role,
+        Password:           string(hashedPassword),
+        IsActive:           true,
+        MustChangePassword: true, // Force password change on first login
+    }
+
+    s.db.Create(user)
+
+    // Send invitation email (logged to console for now)
+    if tempPassword != "" {
+        log.Printf("📧 Invitation: %s - Temp Password: %s", user.Email, tempPassword)
+    }
+
+    return user, nil
+}
 ```
 
-#### 3.2.3 Real-Time GPS Tracking Service
+**Force Password Change Middleware**:
+```go
+// internal/auth/middleware.go
+func CheckPasswordChangeRequired(db *gorm.DB) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        userID, exists := c.Get("user_id")
+        if !exists {
+            c.Next()
+            return
+        }
+
+        var user models.User
+        db.First(&user, "id = ?", userID)
+
+        // If user must change password, block access except to specific endpoints
+        if user.MustChangePassword {
+            allowedPaths := []string{
+                "/api/v1/auth/change-password",
+                "/api/v1/auth/logout",
+                "/api/v1/auth/profile",
+            }
+
+            if !contains(allowedPaths, c.Request.URL.Path) {
+                c.JSON(403, gin.H{
+                    "error": "password_change_required",
+                    "message": "You must change your password before accessing this resource",
+                })
+                c.Abort()
+                return
+            }
+        }
+
+        c.Next()
+    }
+}
+```
+
+**Usage in Main**:
+```go
+// cmd/server/main.go
+protected := r.Group("/api/v1")
+protected.Use(authMiddleware.RequireAuth())
+protected.Use(authMiddleware.CheckPasswordChangeRequired(db)) // ⚠️ Force password change
+
+// Now all protected routes require authentication + password change
+protected.GET("/vehicles", vehicleHandler.List)
+protected.GET("/drivers", driverHandler.List)
+// etc...
+```
+
+#### 3.2.3 Invite-Only User Management System
+
+**Overview**: FleetTracker Pro uses an invite-only system with no public registration for enhanced B2B SaaS security.
+
+**User Creation Flow**:
+
+```
+Super-Admin (Seed) → Create Company → Create Owner
+        ↓
+Owner/Admin → Invite User → Generate Temp Password → Email Invitation
+        ↓
+New User → Login → Force Password Change → Full Access
+```
+
+**Database Schema Updates**:
+```sql
+-- Migration 007: Password change tracking
+ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT true;
+ALTER TABLE users ADD COLUMN last_password_change TIMESTAMPTZ;
+CREATE INDEX idx_users_must_change_password ON users(must_change_password) 
+  WHERE must_change_password = true;
+```
+
+**Super-Admin Seed**:
+```go
+// seeds/super_admin.go
+func SeedSuperAdmin(db *gorm.DB) error {
+    // Check if super-admin exists
+    var count int64
+    db.Model(&models.User{}).Where("role = ?", "super-admin").Count(&count)
+    if count > 0 {
+        return nil // Already exists
+    }
+
+    // Create super-admin
+    hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("ChangeMe123!"), bcrypt.DefaultCost)
+    
+    superAdmin := models.User{
+        Email:              "admin@fleettracker.id",
+        Username:           "superadmin",
+        FirstName:          "Super",
+        LastName:           "Administrator",
+        Role:               "super-admin",
+        Password:           string(hashedPassword),
+        IsActive:           true,
+        MustChangePassword: true,
+    }
+
+    db.Create(&superAdmin)
+    
+    log.Println("✅ Super-admin created: admin@fleettracker.id / ChangeMe123!")
+    return nil
+}
+```
+
+**User Invitation with Temporary Password**:
+```go
+// internal/auth/user_service.go
+func (s *Service) CreateUser(req CreateUserRequest) (*models.User, error) {
+    // Generate temporary password if not provided
+    if req.Password == "" {
+        tempPass, _ := generateTemporaryPassword()
+        req.Password = tempPass
+        
+        // Log temporary password (email service integration TODO)
+        log.Printf("📧 Invitation: %s - Temp Password: %s", req.Email, tempPass)
+    }
+
+    // Hash password
+    hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+
+    // Create user with must_change_password = true
+    user := &models.User{
+        Email:              req.Email,
+        FirstName:          req.FirstName,
+        LastName:           req.LastName,
+        Role:               req.Role,
+        Password:           string(hashedPassword),
+        MustChangePassword: true, // Force password change on first login
+        IsActive:           true,
+    }
+
+    s.db.Create(user)
+    return user, nil
+}
+```
+
+**Deprecated Public Registration**:
+```go
+// internal/auth/handler.go
+// @Deprecated
+func (h *Handler) Register(c *gin.Context) {
+    c.JSON(http.StatusGone, gin.H{
+        "error": "endpoint_deprecated",
+        "message": "Public registration no longer supported. Contact your administrator.",
+        "how_to_get_access": "Contact your company administrator or support@fleettracker.id",
+    })
+}
+```
+
+**Setup Instructions**:
+```bash
+# 1. Run migration
+make migrate-up
+
+# 2. Seed super-admin
+make seed
+# Output: admin@fleettracker.id / ChangeMe123!
+
+# 3. Login
+POST /api/v1/auth/login
+{"email": "admin@fleettracker.id", "password": "ChangeMe123!"}
+# Response: {"must_change_password": true}
+
+# 4. Change password (required)
+PUT /api/v1/auth/change-password
+{"current_password": "ChangeMe123!", "new_password": "NewSecure123!"}
+
+# 5. Create users
+POST /api/v1/users
+{"email": "user@company.com", "first_name": "John", "last_name": "Doe", "role": "admin"}
+# Temp password logged to console
+```
+
+#### 3.2.4 Real-Time GPS Tracking Service
 ```go
 // internal/tracking/service.go
 package tracking
