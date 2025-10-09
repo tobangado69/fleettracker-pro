@@ -1,7 +1,7 @@
 # Authentication System APIs - Feature Brief
 
 **Task ID**: `authentication`  
-**Created**: January 2025  
+**Created**: October 2025  
 **Status**: Ready for Implementation  
 **Estimated Duration**: 3-4 days
 
@@ -58,12 +58,26 @@ FleetTracker Pro needs a comprehensive authentication system to secure the SaaS 
 ## 📋 Requirements
 
 ### Core Authentication Features
-1. **User Registration and Management**
-   - Company-based user registration with validation
+1. **User Registration and Management** (UPDATED - Enhanced Security)
+   - **Public Registration**: Only for first user (becomes company owner)
+   - **Admin-Only User Creation**: Only super-admin/owner/admin can create additional users
+   - **Role Hierarchy & Cross-Company Creation**: 
+     * `super-admin` - Platform-level access
+       - Can create ANY role (super-admin, owner, admin, operator, driver)
+       - Can create users in ANY company (cross-company creation)
+       - Example: Super-admin creates admin for Company A, driver for Company B
+     * `owner` - Company owner (company-bound)
+       - Can create: admin, operator, driver
+       - Can ONLY create users in OWN company
+     * `admin` - Client admin (company-bound)
+       - Can create: operator, driver
+       - Can ONLY create users in OWN company
+     * `operator` - Regular user, cannot create users
+     * `driver` - Mobile app user, cannot create users
    - Indonesian field validation (NPWP, phone numbers, addresses)
    - Email verification and account activation
-   - User profile management and updates
-   - Account deactivation and soft deletion
+   - User profile management and updates (self-service)
+   - Account deactivation (admin-only)
 
 2. **Login and Session Management**
    - Secure email/password login with validation
@@ -79,12 +93,24 @@ FleetTracker Pro needs a comprehensive authentication system to secure the SaaS 
    - Password change functionality
    - Account lockout after failed attempts
 
-4. **Role-Based Access Control (RBAC)**
-   - Company admin, fleet manager, driver roles
-   - Permission-based access control
-   - Company-based data isolation
-   - Role assignment and management
-   - Permission inheritance and delegation
+4. **Role-Based Access Control (RBAC)** (UPDATED - Cross-Company for Super-Admin)
+   - **Role Hierarchy** (who can create whom, where):
+     * `super-admin` → Can create: ALL roles in ANY company
+       - Can create owner for Company A
+       - Can create admin for Company B
+       - Can create driver for Company C
+       - Cross-company user creation allowed
+     * `owner` → Can create: admin, operator, driver
+       - Can ONLY create users in OWN company (company-bound)
+     * `admin` → Can create: operator, driver
+       - Can ONLY create users in OWN company (company-bound)
+     * `operator` → Cannot create users
+     * `driver` → Cannot create users
+   - **Permission-based access control** with role inheritance
+   - **Company-based data isolation** (strict multi-tenancy for non-super-admin)
+   - **Cross-company creation** (super-admin only)
+   - **Role assignment validation** (prevent privilege escalation)
+   - **Audit trail** for all role changes
 
 5. **Security Features**
    - Rate limiting for login attempts
@@ -165,27 +191,33 @@ audit_logs (
 )
 ```
 
-### API Endpoints Design
+### API Endpoints Design (UPDATED - Enhanced Security)
 ```
-POST   /api/v1/auth/register                    - User registration
+PUBLIC ENDPOINTS (No authentication required):
+POST   /api/v1/auth/register                    - Company owner registration ONLY
 POST   /api/v1/auth/login                       - User login
-POST   /api/v1/auth/logout                      - User logout
-POST   /api/v1/auth/refresh                     - Refresh access token
 POST   /api/v1/auth/forgot-password             - Request password reset
 POST   /api/v1/auth/reset-password              - Reset password
-POST   /api/v1/auth/verify-email                - Email verification
-POST   /api/v1/auth/resend-verification         - Resend verification email
 
+AUTHENTICATED ENDPOINTS (Token required):
+POST   /api/v1/auth/logout                      - User logout
+POST   /api/v1/auth/refresh                     - Refresh access token
 GET    /api/v1/auth/profile                     - Get user profile
-PUT    /api/v1/auth/profile                     - Update user profile
+PUT    /api/v1/auth/profile                     - Update user profile  
 PUT    /api/v1/auth/change-password             - Change password
 GET    /api/v1/auth/sessions                    - Get active sessions
 DELETE /api/v1/auth/sessions/:id                - Revoke session
 
-GET    /api/v1/auth/roles                       - Get available roles
-GET    /api/v1/auth/permissions                 - Get user permissions
-POST   /api/v1/auth/assign-role                 - Assign role to user
-DELETE /api/v1/auth/assign-role                 - Remove role from user
+ADMIN ENDPOINTS (super-admin/owner/admin only):
+POST   /api/v1/users                            - Create new user (role-based)
+GET    /api/v1/users                            - List company users
+GET    /api/v1/users/:id                        - Get user details
+PUT    /api/v1/users/:id                        - Update user
+DELETE /api/v1/users/:id                        - Deactivate user
+PUT    /api/v1/users/:id/role                   - Change user role
+GET    /api/v1/users/:id/permissions            - Get user permissions
+POST   /api/v1/users/:id/permissions            - Grant permissions
+DELETE /api/v1/users/:id/permissions/:perm      - Revoke permission
 ```
 
 ---
@@ -349,6 +381,116 @@ This feature brief will evolve during implementation:
 ---
 
 ## 📝 Changelog
+
+### 2025-10-08 (Update 3) - Session Management Implementation
+**Status**: Feature Complete
+**Changes**:
+- ✅ **Session Management Implemented**: Get active sessions and revoke sessions
+  * `GET /api/v1/auth/sessions` - List all active sessions for user
+  * `DELETE /api/v1/auth/sessions/:id` - Revoke specific session
+  * Shows: user_agent, IP address, created_at, is_current flag
+- ✅ **Service Layer**: Created `session_service.go` (138 lines)
+  * `GetActiveSessions()` - Retrieve active sessions
+  * `RevokeSession()` - Revoke single session
+  * `RevokeAllSessions()` - Revoke all except current
+  * `CleanupExpiredSessions()` - Background cleanup job
+- ✅ **Handler Layer**: Updated `handler.go` with implementations
+- ✅ **Security Features**:
+  * Users can only manage their own sessions
+  * Current session marked with `is_current: true`
+  * Redis cache invalidation on revoke
+  * Expired session cleanup
+
+**Rationale**:
+- Enhances account security (users can see active logins)
+- Allows users to revoke suspicious sessions
+- Provides visibility into active devices/locations
+- Aligns with security best practices (Google, Facebook model)
+
+**Implementation**:
+- **New File**: `backend/internal/auth/session_service.go` (138 lines)
+- **Modified**: `backend/internal/auth/handler.go` (2 handlers updated)
+- **Build Status**: ✅ Successful
+- **Time**: 30 minutes
+
+**Next Priority**: Update Swagger documentation
+
+---
+
+### 2025-10-08 (Update 2) - Super-Admin Cross-Company Creation
+**Status**: Requirements Refined
+**Changes**:
+- 🔒 **Super-Admin Cross-Company Access**: Super-admin can create users in ANY company
+  * Super-admin creates owner for Company A ✅
+  * Super-admin creates admin for Company B ✅
+  * Super-admin creates driver for Company C ✅
+  * Example use case: Platform support team onboarding new companies
+- 🔒 **Owner/Admin Company-Bound**: Can only create users in their OWN company
+  * Owner A creates admin in Company A ✅
+  * Owner A creates driver in Company B ❌ BLOCKED
+- 🔒 **company_id Parameter**: 
+  * Super-admin: Can specify `company_id` in request
+  * Owner/Admin: `company_id` automatically set to their company (ignore request parameter)
+
+**Rationale**:
+- Super-admin needs cross-company access for platform management
+- Enables super-admin to onboard new companies
+- Allows super-admin to create initial users for any company
+- Owner/Admin remain strictly company-bound for security
+
+**Implementation Impact**:
+- ✅ **ALREADY IMPLEMENTED**: `CreateUser()` service has this logic
+- ✅ **Lines 84-90** in `user_service.go` check super-admin role
+- ✅ **Validation**: Only super-admin can specify `company_id` in request
+- ✅ **Security**: Owner/Admin attempts to override `company_id` return 403 Forbidden
+- ✅ **Working**: Super-admin can create admin for Company A, driver for Company B
+
+**Code Verification**:
+```go
+// backend/internal/auth/user_service.go:84-90
+if req.CompanyID != "" {
+    // Only super-admin can create users in other companies
+    if creatorRole != RoleSuperAdmin {
+        return nil, apperrors.NewForbiddenError("Only super-admin can create users in other companies")
+    }
+    companyID = req.CompanyID
+}
+```
+
+**Status**: ✅ No additional implementation needed - feature already works!
+
+---
+
+### 2025-01-08 (Update 1) - Enhanced Security Model (SaaS Multi-Tenant)
+**Status**: Updated for stricter SaaS security
+**Changes**:
+- 🔒 **Restricted Public Registration**: `/auth/register` now only for company owner (first user)
+- 🔒 **Admin-Only User Creation**: New `/users` endpoints for creating additional users
+- 🔒 **Role Hierarchy Enforcement**:
+  * super-admin can create all roles in ANY company
+  * owner can create admin/operator/driver in OWN company
+  * admin can create operator/driver in OWN company
+  * operator/driver cannot create users
+- 🔒 **Privilege Escalation Prevention**: Users cannot assign roles higher than their own
+- 🔒 **Company Isolation**: Owner/Admin can only manage users within their company
+- 📝 **Audit Trail**: All user creation/role changes logged
+
+**Rationale**:
+- Prevents unauthorized user creation in SaaS environment
+- Ensures company admins control their user base
+- Prevents security vulnerabilities from open registration
+- Aligns with enterprise SaaS best practices (Salesforce, HubSpot model)
+
+**Implementation Impact**:
+- **Breaking Change**: Public `/auth/register` restricted to first user only
+- **New Endpoints**: `/users/*` for user management (admin-protected)
+- **New Middleware**: Role hierarchy validation
+- **New Business Logic**: Prevent privilege escalation
+- **Estimated Implementation**: 4-6 hours (COMPLETED)
+
+**Next Priority**: Implement role hierarchy validation and user management endpoints (COMPLETED)
+
+---
 
 ### 2025-01-XX - Initial Feature Brief Created
 **Status**: Ready for implementation
