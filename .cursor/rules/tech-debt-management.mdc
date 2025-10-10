@@ -1,0 +1,1339 @@
+---
+alwaysApply: true
+---
+# Technical Debt Management & Prevention
+
+## Core Philosophy
+
+Technical debt is not inherently bad - it's about **conscious trade-offs**. The key is:
+1. **Identify** debt early and accurately
+2. **Refactor** strategically and safely
+3. **Prevent** accumulation through best practices
+
+---
+
+## 🚨 Identifying Technical Debt
+
+### Code Smells Detection
+
+#### Go Code Smells
+```go
+// ❌ BAD: Unused parameters
+func ProcessData(ctx context.Context, userID string, unusedParam int) error {
+    // ctx and unusedParam not used
+    return nil
+}
+
+// ✅ GOOD: All parameters used or explicitly marked
+func ProcessData(ctx context.Context, userID string) error {
+    // Or use _ for intentionally unused: func ProcessData(_ context.Context, userID string)
+    return s.db.WithContext(ctx).Create(&User{ID: userID}).Error
+}
+
+// ❌ BAD: Large function (>50 lines)
+func HandleEverything(c *gin.Context) {
+    // 200+ lines of validation, business logic, database ops, response formatting
+}
+
+// ✅ GOOD: Single responsibility, delegated logic
+func (h *Handler) CreateUser(c *gin.Context) {
+    req, err := h.validateRequest(c)
+    if err != nil {
+        return
+    }
+    
+    user, err := h.service.CreateUser(req)
+    if err != nil {
+        middleware.AbortWithInternal(c, "Failed to create user", err)
+        return
+    }
+    
+    c.JSON(http.StatusCreated, gin.H{"success": true, "data": user})
+}
+
+// ❌ BAD: Deep nesting (>3 levels)
+func Process(data Data) error {
+    if data.Valid {
+        if data.Type == "A" {
+            if data.Status == "active" {
+                if data.Amount > 0 {
+                    // Deeply nested logic
+                }
+            }
+        }
+    }
+}
+
+// ✅ GOOD: Early returns, flat structure
+func Process(data Data) error {
+    if !data.Valid {
+        return errors.New("invalid data")
+    }
+    if data.Type != "A" {
+        return errors.New("invalid type")
+    }
+    if data.Status != "active" {
+        return errors.New("inactive status")
+    }
+    if data.Amount <= 0 {
+        return errors.New("invalid amount")
+    }
+    
+    // Process logic at single indentation level
+    return nil
+}
+
+// ❌ BAD: Global variables
+var db *gorm.DB
+var config Config
+
+func Init() {
+    db = connectDB()
+}
+
+// ✅ GOOD: Dependency injection
+type Service struct {
+    db     *gorm.DB
+    config *Config
+}
+
+func NewService(db *gorm.DB, config *Config) *Service {
+    return &Service{db: db, config: config}
+}
+
+// ❌ BAD: Error swallowing
+func GetUser(id string) *User {
+    user, _ := db.First(&User{}, id) // Ignoring error!
+    return user
+}
+
+// ✅ GOOD: Proper error handling
+func GetUser(id string) (*User, error) {
+    var user User
+    if err := db.First(&user, id).Error; err != nil {
+        return nil, fmt.Errorf("failed to get user %s: %w", id, err)
+    }
+    return &user, nil
+}
+```
+
+#### TypeScript Code Smells
+```typescript
+// ❌ BAD: Using 'any' type (type safety lost)
+const processData = (data: any) => {
+    return data.field // No autocomplete, no type checking
+}
+
+// ✅ GOOD: Proper typing
+interface UserData {
+    id: string
+    name: string
+    email: string
+}
+
+const processData = (data: UserData): ProcessedData => {
+    return { userId: data.id, displayName: data.name }
+}
+
+// ❌ BAD: Prop drilling (passing props through many levels)
+<ParentComponent data={data}>
+  <MiddleComponent data={data}>
+    <ChildComponent data={data}>
+      <GrandchildComponent data={data} />
+    </ChildComponent>
+  </MiddleComponent>
+</ParentComponent>
+
+// ✅ GOOD: Use context or state management
+const DataContext = createContext<UserData | null>(null)
+
+const ParentComponent = () => {
+    const data = useUserData()
+    return (
+        <DataContext.Provider value={data}>
+            <MiddleComponent />
+        </DataContext.Provider>
+    )
+}
+
+const GrandchildComponent = () => {
+    const data = useContext(DataContext)
+    return <div>{data?.name}</div>
+}
+
+// ❌ BAD: Side effects in render
+const Component = () => {
+    localStorage.setItem('key', 'value') // Side effect in render!
+    return <div>Content</div>
+}
+
+// ✅ GOOD: Use useEffect
+const Component = () => {
+    useEffect(() => {
+        localStorage.setItem('key', 'value')
+    }, [])
+    
+    return <div>Content</div>
+}
+
+// ❌ BAD: Mutating props
+const Component = ({ items }: { items: Item[] }) => {
+    items.push(newItem) // Mutating prop!
+    return <List items={items} />
+}
+
+// ✅ GOOD: Create new array
+const Component = ({ items }: { items: Item[] }) => {
+    const updatedItems = [...items, newItem]
+    return <List items={updatedItems} />
+}
+```
+
+### Antipatterns
+
+#### Go Antipatterns
+```go
+// ❌ ANTIPATTERN: God object (does everything)
+type MegaService struct {
+    db    *gorm.DB
+    redis *redis.Client
+    cache *Cache
+    email *EmailService
+    // ... 50 more fields
+}
+
+// Handles authentication, vehicles, drivers, payments, analytics, everything...
+
+// ✅ GOOD: Single-purpose services
+type VehicleService struct {
+    db   *gorm.DB
+    repo *VehicleRepository
+}
+
+type DriverService struct {
+    db   *gorm.DB
+    repo *DriverRepository
+}
+
+// ❌ ANTIPATTERN: Anemic domain model (no behavior, just data)
+type User struct {
+    ID    string
+    Email string
+    Role  string
+}
+
+func UpdateUserRole(user *User, newRole string) {
+    user.Role = newRole
+}
+
+// ✅ GOOD: Rich domain model (data + behavior)
+type User struct {
+    ID    string
+    Email string
+    Role  string
+}
+
+func (u *User) CanAssignRole(targetRole string) bool {
+    hierarchy := map[string]int{
+        "super-admin": 5,
+        "owner": 4,
+        "admin": 3,
+        "operator": 2,
+        "driver": 1,
+    }
+    return hierarchy[u.Role] > hierarchy[targetRole]
+}
+
+func (u *User) AssignRole(newRole string) error {
+    if !u.CanAssignRole(newRole) {
+        return errors.New("insufficient permissions")
+    }
+    u.Role = newRole
+    return nil
+}
+```
+
+### Performance Bottlenecks
+
+#### Go Performance Issues
+```go
+// ❌ BAD: N+1 query problem
+func GetVehiclesWithDrivers(companyID string) ([]Vehicle, error) {
+    var vehicles []Vehicle
+    db.Where("company_id = ?", companyID).Find(&vehicles)
+    
+    for i := range vehicles {
+        var driver Driver
+        db.First(&driver, "id = ?", vehicles[i].DriverID)
+        vehicles[i].Driver = driver // N queries for N vehicles
+    }
+    return vehicles, nil
+}
+
+// ✅ GOOD: Use eager loading
+func GetVehiclesWithDrivers(companyID string) ([]Vehicle, error) {
+    var vehicles []Vehicle
+    err := db.Preload("Driver").
+        Where("company_id = ?", companyID).
+        Find(&vehicles).Error
+    return vehicles, err
+}
+
+// ❌ BAD: Missing indexes
+// Query: SELECT * FROM vehicles WHERE company_id = ? AND status = ?
+// No indexes on company_id or status!
+
+// ✅ GOOD: Add composite index
+CREATE INDEX idx_vehicles_company_status ON vehicles(company_id, status);
+
+// ❌ BAD: Loading all data when you need only count
+func CountActiveVehicles(companyID string) (int, error) {
+    var vehicles []Vehicle
+    db.Where("company_id = ? AND status = ?", companyID, "active").Find(&vehicles)
+    return len(vehicles), nil // Loaded all data just to count!
+}
+
+// ✅ GOOD: Use database count
+func CountActiveVehicles(companyID string) (int64, error) {
+    var count int64
+    err := db.Model(&Vehicle{}).
+        Where("company_id = ? AND status = ?", companyID, "active").
+        Count(&count).Error
+    return count, err
+}
+
+// ❌ BAD: String concatenation in loop
+func BuildQuery(filters []string) string {
+    query := "SELECT * FROM users WHERE "
+    for _, filter := range filters {
+        query += filter + " AND " // Creates new string each iteration
+    }
+    return query
+}
+
+// ✅ GOOD: Use strings.Builder
+func BuildQuery(filters []string) string {
+    var builder strings.Builder
+    builder.WriteString("SELECT * FROM users WHERE ")
+    for i, filter := range filters {
+        if i > 0 {
+            builder.WriteString(" AND ")
+        }
+        builder.WriteString(filter)
+    }
+    return builder.String()
+}
+```
+
+#### TypeScript Performance Issues
+```typescript
+// ❌ BAD: Unnecessary re-renders
+const VehicleList = ({ vehicles }: { vehicles: Vehicle[] }) => {
+    const sortedVehicles = vehicles.sort((a, b) => a.name.localeCompare(b.name))
+    // Sorts on EVERY render!
+    
+    return <div>{sortedVehicles.map(v => <VehicleCard key={v.id} vehicle={v} />)}</div>
+}
+
+// ✅ GOOD: Memoize expensive operations
+const VehicleList = ({ vehicles }: { vehicles: Vehicle[] }) => {
+    const sortedVehicles = useMemo(
+        () => vehicles.sort((a, b) => a.name.localeCompare(b.name)),
+        [vehicles]
+    )
+    
+    return <div>{sortedVehicles.map(v => <VehicleCard key={v.id} vehicle={v} />)}</div>
+}
+
+// ❌ BAD: Large bundle (importing entire library)
+import _ from 'lodash' // Imports entire lodash!
+
+// ✅ GOOD: Import only what you need
+import debounce from 'lodash/debounce'
+
+// ❌ BAD: Not splitting code
+// Single bundle.js: 5MB
+
+// ✅ GOOD: Code splitting with lazy loading
+const DashboardPage = lazy(() => import('@pages/dashboard/DashboardPage'))
+const VehiclesPage = lazy(() => import('@pages/vehicles/VehiclesPage'))
+```
+
+### Security Vulnerabilities
+
+#### Go Security Issues
+```go
+// ❌ BAD: SQL injection vulnerability
+func GetUser(email string) (*User, error) {
+    var user User
+    db.Raw("SELECT * FROM users WHERE email = '" + email + "'").Scan(&user)
+    // Vulnerable to SQL injection!
+    return &user, nil
+}
+
+// ✅ GOOD: Parameterized queries
+func GetUser(email string) (*User, error) {
+    var user User
+    err := db.Where("email = ?", email).First(&user).Error
+    return &user, err
+}
+
+// ❌ BAD: Weak password hashing
+hashedPassword := md5.Sum([]byte(password)) // MD5 is broken!
+
+// ✅ GOOD: Use bcrypt
+hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+
+// ❌ BAD: No authentication on endpoint
+r.GET("/api/v1/vehicles", vehicleHandler.List)
+
+// ✅ GOOD: Require authentication
+protected := r.Group("/api/v1")
+protected.Use(authMiddleware.RequireAuth())
+protected.GET("/vehicles", vehicleHandler.List)
+
+// ❌ BAD: Missing company isolation
+func GetVehicles(page, limit int) ([]Vehicle, error) {
+    var vehicles []Vehicle
+    db.Limit(limit).Offset((page-1)*limit).Find(&vehicles)
+    // Returns ALL vehicles from ALL companies!
+    return vehicles, nil
+}
+
+// ✅ GOOD: Enforce company isolation
+func GetVehicles(companyID string, page, limit int) ([]Vehicle, error) {
+    var vehicles []Vehicle
+    err := db.Where("company_id = ?", companyID).
+        Limit(limit).
+        Offset((page-1)*limit).
+        Find(&vehicles).Error
+    return vehicles, err
+}
+```
+
+#### TypeScript Security Issues
+```typescript
+// ❌ BAD: XSS vulnerability
+const UserComment = ({ comment }: { comment: string }) => {
+    return <div dangerouslySetInnerHTML={{ __html: comment }} />
+    // Renders raw HTML, vulnerable to XSS!
+}
+
+// ✅ GOOD: Escape HTML by default
+const UserComment = ({ comment }: { comment: string }) => {
+    return <div>{comment}</div> // React escapes by default
+}
+
+// ❌ BAD: Exposed API keys in frontend
+const API_KEY = 'sk_live_1234567890abcdef'
+api.get('/data', { headers: { 'X-API-Key': API_KEY } })
+
+// ✅ GOOD: Use environment variables and proxy
+const API_KEY = import.meta.env.VITE_API_KEY // Server-side only
+// Or better: proxy through your backend
+
+// ❌ BAD: Storing sensitive data in localStorage
+localStorage.setItem('password', password)
+localStorage.setItem('creditCard', cardNumber)
+
+// ✅ GOOD: Never store sensitive data in localStorage
+// Use httpOnly cookies for tokens, never store passwords/cards
+```
+
+### Documentation Gaps
+
+#### Missing Documentation
+```go
+// ❌ BAD: No documentation
+func ProcessPayment(id string, amount float64) error {
+    // Complex payment logic...
+    return nil
+}
+
+// ✅ GOOD: Complete godoc
+// ProcessPayment processes a payment for the given invoice.
+// It validates the amount, calculates Indonesian PPN 11% tax,
+// updates the invoice status, and creates an audit log entry.
+//
+// Parameters:
+//   - id: Invoice ID (UUID format)
+//   - amount: Payment amount in IDR (must match invoice total)
+//
+// Returns:
+//   - error: validation error, database error, or nil on success
+//
+// Example:
+//   err := service.ProcessPayment("inv-123", 1000000.0)
+func ProcessPayment(id string, amount float64) error {
+    // Implementation...
+}
+```
+
+### Missing Tests
+
+```go
+// ❌ BAD: Untested business logic
+func CalculateDriverScore(violations int, trips int, fuel float64) float64 {
+    // Complex scoring algorithm with no tests
+    score := 100.0
+    score -= float64(violations) * 5.0
+    score += float64(trips) * 0.1
+    score -= fuel * 0.01
+    if score < 0 {
+        score = 0
+    }
+    return score
+}
+
+// ✅ GOOD: Comprehensive tests
+func TestCalculateDriverScore(t *testing.T) {
+    tests := []struct {
+        name       string
+        violations int
+        trips      int
+        fuel       float64
+        expected   float64
+    }{
+        {"perfect driver", 0, 100, 500, 95.0},
+        {"average driver", 5, 50, 1000, 65.0},
+        {"poor driver", 20, 10, 2000, 0.0},
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            score := CalculateDriverScore(tt.violations, tt.trips, tt.fuel)
+            assert.Equal(t, tt.expected, score)
+        })
+    }
+}
+```
+
+---
+
+## 🔧 Refactoring Strategies
+
+### Safe Refactoring Techniques
+
+#### Write Tests First
+```go
+// Step 1: Write test for existing behavior
+func TestGetVehicle_ExistingBehavior(t *testing.T) {
+    vehicle, err := service.GetVehicle("company-1", "vehicle-1")
+    require.NoError(t, err)
+    assert.Equal(t, "B 1234 ABC", vehicle.LicensePlate)
+}
+
+// Step 2: Refactor (extract, rename, optimize)
+func (s *Service) GetVehicle(companyID, vehicleID string) (*Vehicle, error) {
+    // Refactored implementation
+}
+
+// Step 3: Verify tests still pass
+// go test ./...
+```
+
+#### Incremental Changes
+```go
+// ❌ BAD: Big bang refactor (rewrite everything at once)
+// Risky, hard to review, breaks everything temporarily
+
+// ✅ GOOD: Incremental refactoring
+// Step 1: Extract repository layer (keep existing service working)
+type VehicleRepository struct {
+    db *gorm.DB
+}
+
+func (r *VehicleRepository) GetByID(ctx context.Context, id string) (*Vehicle, error) {
+    var vehicle Vehicle
+    err := r.db.WithContext(ctx).First(&vehicle, "id = ?", id).Error
+    return &vehicle, err
+}
+
+// Step 2: Use repository in service (one method at a time)
+func (s *Service) GetVehicle(companyID, vehicleID string) (*Vehicle, error) {
+    return s.repo.GetByID(context.Background(), vehicleID)
+}
+
+// Step 3: Migrate other methods one by one
+// Step 4: Remove old direct DB access
+```
+
+### Code Structure Improvements
+
+#### Extract Functions (DRY Principle)
+```go
+// ❌ BAD: Repeated validation logic
+func CreateVehicle(req CreateVehicleRequest) error {
+    if req.LicensePlate == "" {
+        return errors.New("license plate required")
+    }
+    if !regexp.MustCompile(`^[A-Z]{1,2}\s*\d{1,4}\s*[A-Z]{1,3}$`).MatchString(req.LicensePlate) {
+        return errors.New("invalid license plate format")
+    }
+    // Create vehicle...
+}
+
+func UpdateVehicle(id string, req UpdateVehicleRequest) error {
+    if req.LicensePlate == "" {
+        return errors.New("license plate required")
+    }
+    if !regexp.MustCompile(`^[A-Z]{1,2}\s*\d{1,4}\s*[A-Z]{1,3}$`).MatchString(req.LicensePlate) {
+        return errors.New("invalid license plate format")
+    }
+    // Update vehicle...
+}
+
+// ✅ GOOD: Extract validation to reusable function
+func ValidateLicensePlate(plate string) error {
+    if plate == "" {
+        return errors.New("license plate required")
+    }
+    
+    pattern := regexp.MustCompile(`^[A-Z]{1,2}\s*\d{1,4}\s*[A-Z]{1,3}$`)
+    if !pattern.MatchString(plate) {
+        return errors.New("invalid Indonesian license plate format (e.g., B 1234 ABC)")
+    }
+    
+    return nil
+}
+
+func CreateVehicle(req CreateVehicleRequest) error {
+    if err := ValidateLicensePlate(req.LicensePlate); err != nil {
+        return err
+    }
+    // Create vehicle...
+}
+
+func UpdateVehicle(id string, req UpdateVehicleRequest) error {
+    if err := ValidateLicensePlate(req.LicensePlate); err != nil {
+        return err
+    }
+    // Update vehicle...
+}
+```
+
+### Database Schema Optimization
+
+```sql
+-- ❌ BAD: Missing indexes on foreign keys
+CREATE TABLE vehicles (
+    id UUID PRIMARY KEY,
+    company_id UUID NOT NULL,
+    driver_id UUID,
+    status VARCHAR(20)
+);
+-- Queries on company_id will be slow!
+
+-- ✅ GOOD: Add indexes for common query patterns
+CREATE INDEX idx_vehicles_company_id ON vehicles(company_id);
+CREATE INDEX idx_vehicles_driver_id ON vehicles(driver_id) WHERE driver_id IS NOT NULL;
+CREATE INDEX idx_vehicles_company_status ON vehicles(company_id, status);
+
+-- ❌ BAD: Denormalized data (duplicated company name)
+CREATE TABLE vehicles (
+    id UUID PRIMARY KEY,
+    company_id UUID,
+    company_name VARCHAR(255), -- Duplicated!
+    license_plate VARCHAR(20)
+);
+
+-- ✅ GOOD: Normalized schema
+CREATE TABLE vehicles (
+    id UUID PRIMARY KEY,
+    company_id UUID REFERENCES companies(id),
+    license_plate VARCHAR(20)
+);
+
+-- Join when company_name is needed
+SELECT v.*, c.name as company_name
+FROM vehicles v
+JOIN companies c ON v.company_id = c.id;
+
+-- ❌ BAD: Wrong data types
+CREATE TABLE gps_tracks (
+    latitude VARCHAR(50),  -- Should be numeric!
+    longitude VARCHAR(50),
+    speed VARCHAR(10)
+);
+
+-- ✅ GOOD: Proper data types
+CREATE TABLE gps_tracks (
+    latitude DECIMAL(10,8),
+    longitude DECIMAL(11,8),
+    speed DECIMAL(5,2),
+    location GEOMETRY(POINT, 4326) -- PostGIS for spatial queries
+);
+```
+
+### API Design Improvements
+
+```go
+// ❌ BAD: Inconsistent response formats
+func (h *Handler) GetVehicle(c *gin.Context) {
+    vehicle, _ := h.service.GetVehicle(id)
+    c.JSON(200, vehicle) // No wrapper, no error handling
+}
+
+func (h *Handler) ListVehicles(c *gin.Context) {
+    vehicles, _ := h.service.ListVehicles()
+    c.JSON(200, gin.H{"data": vehicles, "success": true}) // Different format!
+}
+
+// ✅ GOOD: Consistent response structure
+type SuccessResponse struct {
+    Success bool        `json:"success"`
+    Data    interface{} `json:"data"`
+    Message string      `json:"message,omitempty"`
+}
+
+type ErrorResponse struct {
+    Success bool   `json:"success"`
+    Error   string `json:"error"`
+    Message string `json:"message"`
+}
+
+func (h *Handler) GetVehicle(c *gin.Context) {
+    vehicle, err := h.service.GetVehicle(id)
+    if err != nil {
+        c.JSON(404, ErrorResponse{Success: false, Error: "NOT_FOUND", Message: "Vehicle not found"})
+        return
+    }
+    c.JSON(200, SuccessResponse{Success: true, Data: vehicle})
+}
+
+func (h *Handler) ListVehicles(c *gin.Context) {
+    vehicles, err := h.service.ListVehicles()
+    if err != nil {
+        c.JSON(500, ErrorResponse{Success: false, Error: "INTERNAL_ERROR", Message: err.Error()})
+        return
+    }
+    c.JSON(200, SuccessResponse{Success: true, Data: vehicles})
+}
+
+// ❌ BAD: Inconsistent HTTP status codes
+c.JSON(200, ErrorResponse{...}) // Error with 200 OK?!
+
+// ✅ GOOD: Proper status codes
+c.JSON(200, SuccessResponse{...})    // Success
+c.JSON(400, ErrorResponse{...})      // Bad request
+c.JSON(401, ErrorResponse{...})      // Unauthorized
+c.JSON(403, ErrorResponse{...})      // Forbidden
+c.JSON(404, ErrorResponse{...})      // Not found
+c.JSON(500, ErrorResponse{...})      // Internal error
+```
+
+### Performance Optimization
+
+```go
+// ❌ BAD: No caching for expensive operations
+func GetDashboardStats(companyID string) (*DashboardStats, error) {
+    // Complex aggregation query taking 500ms
+    stats := calculateComplexStats(companyID)
+    return stats, nil
+}
+
+// ✅ GOOD: Cache expensive operations
+func GetDashboardStats(companyID string) (*DashboardStats, error) {
+    // Try cache first
+    cacheKey := fmt.Sprintf("dashboard:stats:%s", companyID)
+    if cached, err := redis.Get(ctx, cacheKey).Result(); err == nil {
+        var stats DashboardStats
+        json.Unmarshal([]byte(cached), &stats)
+        return &stats, nil
+    }
+    
+    // Calculate if not cached
+    stats := calculateComplexStats(companyID)
+    
+    // Cache for 10 minutes
+    data, _ := json.Marshal(stats)
+    redis.Set(ctx, cacheKey, data, 10*time.Minute)
+    
+    return stats, nil
+}
+
+// ❌ BAD: Synchronous heavy operations
+func GenerateReport(companyID string) (*Report, error) {
+    // Takes 30 seconds to generate!
+    report := generateComplexReport(companyID)
+    return report, nil
+}
+
+// ✅ GOOD: Use background jobs for heavy operations
+func GenerateReport(companyID string) (string, error) {
+    job := &Job{
+        Type: "report_generation",
+        Data: map[string]interface{}{"company_id": companyID},
+    }
+    
+    jobID, err := jobQueue.Enqueue(ctx, job)
+    if err != nil {
+        return "", err
+    }
+    
+    return jobID, nil // Return job ID immediately
+}
+```
+
+---
+
+## ✅ Prevention Best Practices
+
+### Clean Code Principles
+
+#### SOLID Principles
+
+**Single Responsibility**:
+```go
+// ❌ BAD: Multiple responsibilities
+type UserService struct {
+    db *gorm.DB
+}
+
+func (s *UserService) CreateUser(req CreateUserRequest) (*User, error) {
+    // 1. Validate input
+    // 2. Hash password
+    // 3. Create database record
+    // 4. Send welcome email
+    // 5. Update analytics
+    // 6. Log audit trail
+    // TOO MANY RESPONSIBILITIES!
+}
+
+// ✅ GOOD: Single responsibility
+type UserService struct {
+    db            *gorm.DB
+    passwordHasher *PasswordHasher
+    emailService   *EmailService
+    auditLogger    *AuditLogger
+}
+
+func (s *UserService) CreateUser(req CreateUserRequest) (*User, error) {
+    // Single responsibility: orchestrate user creation
+    hashedPassword := s.passwordHasher.Hash(req.Password)
+    
+    user := &User{Email: req.Email, Password: hashedPassword}
+    if err := s.db.Create(user).Error; err != nil {
+        return nil, err
+    }
+    
+    go s.emailService.SendWelcome(user.Email)
+    go s.auditLogger.LogCreate("user", user.ID, req)
+    
+    return user, nil
+}
+```
+
+**Open/Closed Principle**:
+```go
+// ❌ BAD: Modifying existing code for new features
+func CalculateFuelCost(fuelType string, liters float64) float64 {
+    switch fuelType {
+    case "diesel":
+        return liters * 15000
+    case "gasoline":
+        return liters * 16000
+    // Adding new fuel type requires modifying this function
+    }
+}
+
+// ✅ GOOD: Open for extension, closed for modification
+type FuelPriceCalculator interface {
+    CalculateCost(liters float64) float64
+}
+
+type DieselCalculator struct{}
+func (d *DieselCalculator) CalculateCost(liters float64) float64 {
+    return liters * 15000
+}
+
+type GasolineCalculator struct{}
+func (g *GasolineCalculator) CalculateCost(liters float64) float64 {
+    return liters * 16000
+}
+
+// Adding new fuel type: create new calculator, no modifications needed
+type ElectricCalculator struct{}
+func (e *ElectricCalculator) CalculateCost(kwh float64) float64 {
+    return kwh * 2000
+}
+```
+
+#### Clear Naming
+
+```go
+// ❌ BAD: Unclear names
+func Process(d Data) error { ... }
+func HandleIt(c *gin.Context) { ... }
+func DoStuff(id string) error { ... }
+
+// ✅ GOOD: Self-documenting names
+func ValidateVehicleData(vehicle *Vehicle) error { ... }
+func HandleCreateVehicleRequest(c *gin.Context) { ... }
+func AssignDriverToVehicle(vehicleID, driverID string) error { ... }
+
+// ❌ BAD: Ambiguous abbreviations
+func GetUsr(id string) (*Usr, error) { ... }
+func ProcVeh(v *Veh) error { ... }
+
+// ✅ GOOD: Full, clear names
+func GetUser(id string) (*User, error) { ... }
+func ProcessVehicle(vehicle *Vehicle) error { ... }
+```
+
+#### Minimal Complexity
+
+```go
+// ❌ BAD: High cyclomatic complexity (>10)
+func ProcessTrip(trip *Trip) error {
+    if trip.Status == "started" {
+        if trip.VehicleID != "" {
+            if trip.DriverID != "" {
+                if trip.StartTime != nil {
+                    if trip.StartLocation != nil {
+                        // Deep nested conditions (complexity: 15+)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ✅ GOOD: Low complexity with early returns
+func ProcessTrip(trip *Trip) error {
+    if trip.Status != "started" {
+        return errors.New("trip not started")
+    }
+    if trip.VehicleID == "" {
+        return errors.New("vehicle ID required")
+    }
+    if trip.DriverID == "" {
+        return errors.New("driver ID required")
+    }
+    if trip.StartTime == nil {
+        return errors.New("start time required")
+    }
+    if trip.StartLocation == nil {
+        return errors.New("start location required")
+    }
+    
+    // Process logic at single indentation level (complexity: 2)
+    return s.saveTrip(trip)
+}
+```
+
+### Code Review Processes
+
+#### Code Review Checklist
+
+**Functionality**:
+- [ ] Does the code do what it's supposed to do?
+- [ ] Are edge cases handled?
+- [ ] Is error handling comprehensive?
+
+**Code Quality**:
+- [ ] Are functions < 50 lines?
+- [ ] Is cyclomatic complexity < 10?
+- [ ] Are names clear and self-documenting?
+- [ ] Is code duplication < 2%?
+
+**Performance**:
+- [ ] Are database queries optimized?
+- [ ] Are proper indexes used?
+- [ ] Is caching implemented for expensive operations?
+- [ ] Are N+1 queries avoided?
+
+**Security**:
+- [ ] Is input validated and sanitized?
+- [ ] Are SQL injection vulnerabilities prevented?
+- [ ] Is authentication/authorization enforced?
+- [ ] Is multi-tenant isolation maintained?
+
+**Testing**:
+- [ ] Are there unit tests?
+- [ ] Is test coverage > 80%?
+- [ ] Are edge cases tested?
+- [ ] Do all tests pass?
+
+**Documentation**:
+- [ ] Are exported functions documented (godoc)?
+- [ ] Are complex algorithms explained?
+- [ ] Is API documentation updated?
+- [ ] Is README updated if needed?
+
+### Automated Testing Strategies
+
+```go
+// ✅ GOOD: Comprehensive test coverage
+
+// 1. Unit tests for business logic
+func TestVehicleService_AssignDriver(t *testing.T) {
+    db, cleanup := testutil.SetupTestDB(t)
+    defer cleanup()
+    
+    service := NewService(db, nil)
+    
+    // Test happy path
+    // Test validation errors
+    // Test database errors
+    // Test edge cases
+}
+
+// 2. Integration tests for handlers
+func TestVehicleHandler_CreateVehicle(t *testing.T) {
+    router := setupTestRouter()
+    
+    payload := map[string]interface{}{
+        "license_plate": "B 1234 ABC",
+        "make": "Toyota",
+    }
+    
+    // Test full HTTP flow
+}
+
+// 3. Table-driven tests for multiple scenarios
+func TestValidateLicensePlate(t *testing.T) {
+    tests := []struct {
+        name        string
+        plate       string
+        expectedErr error
+    }{
+        {"valid Jakarta plate", "B 1234 ABC", nil},
+        {"valid Bandung plate", "D 5678 XYZ", nil},
+        {"invalid format", "123ABC", ErrInvalidFormat},
+        {"empty plate", "", ErrRequired},
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            err := ValidateLicensePlate(tt.plate)
+            assert.Equal(t, tt.expectedErr, err)
+        })
+    }
+}
+```
+
+### Documentation Standards
+
+```go
+// ✅ GOOD: Complete documentation
+
+// Package vehicle provides vehicle management functionality for fleet tracking.
+//
+// The package implements CRUD operations for vehicles with Indonesian compliance
+// validation (STNK, BPKB, license plate formats). It follows the repository pattern
+// for data access and includes caching for performance optimization.
+//
+// Example usage:
+//   service := vehicle.NewService(db, redis)
+//   vehicle, err := service.CreateVehicle(CreateVehicleRequest{
+//       CompanyID:    "company-123",
+//       LicensePlate: "B 1234 ABC",
+//       Make:         "Toyota",
+//       Model:        "Avanza",
+//   })
+package vehicle
+
+// Service handles vehicle business logic.
+// It enforces multi-tenant isolation and Indonesian compliance validation.
+type Service struct {
+    db    *gorm.DB
+    redis *redis.Client
+    cache *CacheService
+}
+
+// CreateVehicle creates a new vehicle with Indonesian compliance validation.
+//
+// The function validates the license plate format (Indonesian standard),
+// STNK and BPKB numbers, and enforces company data isolation.
+//
+// Parameters:
+//   - req: Vehicle creation request with all required fields
+//
+// Returns:
+//   - *Vehicle: Created vehicle with generated ID
+//   - error: Validation error, database error, or nil on success
+//
+// Example:
+//   vehicle, err := service.CreateVehicle(CreateVehicleRequest{
+//       CompanyID:    "company-123",
+//       LicensePlate: "B 1234 ABC",
+//       STNKNumber:   "1234567890123",
+//       BPKBNumber:   "A12345678",
+//   })
+func (s *Service) CreateVehicle(req CreateVehicleRequest) (*Vehicle, error) {
+    // Implementation...
+}
+```
+
+### Continuous Improvement Culture
+
+#### Refactor During Feature Work
+
+```go
+// When working on a feature, improve the code you touch:
+
+// Example: Adding vehicle history feature
+func (s *Service) GetVehicleHistory(vehicleID string) ([]History, error) {
+    // While implementing this new feature, also refactor GetVehicle if it's messy
+    
+    // Before (existing code):
+    // func GetVehicle(id string) *Vehicle {
+    //     v, _ := db.First(&Vehicle{}, id)  // Error swallowing!
+    //     return v
+    // }
+    
+    // Refactor to:
+    func (s *Service) GetVehicle(id string) (*Vehicle, error) {
+        var vehicle Vehicle
+        if err := s.db.First(&vehicle, "id = ?", id).Error; err != nil {
+            return nil, fmt.Errorf("failed to get vehicle: %w", err)
+        }
+        return &vehicle, nil
+    }
+    
+    // Then implement new feature using improved GetVehicle
+    vehicle, err := s.GetVehicle(vehicleID)
+    if err != nil {
+        return nil, err
+    }
+    
+    // Get history...
+}
+```
+
+#### Tech Debt Sprints
+
+**Schedule regular tech debt reduction**:
+- Dedicate 20% of sprint capacity to tech debt
+- Create tech debt tickets during code reviews
+- Prioritize by impact (high impact, low effort first)
+- Track tech debt reduction metrics
+
+**Tech Debt Ticket Template**:
+```markdown
+## Tech Debt: [Title]
+
+**Type**: Code Quality / Performance / Security / Documentation / Testing
+**Impact**: High / Medium / Low
+**Effort**: High / Medium / Low
+**Component**: internal/vehicle/service.go
+
+**Problem**:
+The GetVehicleList function has N+1 query problem, loading drivers in a loop.
+
+**Current Code**:
+```go
+for _, vehicle := range vehicles {
+    driver, _ := db.First(&Driver{}, vehicle.DriverID)
+}
+```
+
+**Proposed Solution**:
+```go
+db.Preload("Driver").Find(&vehicles)
+```
+
+**Benefits**:
+- 10x faster queries (500ms → 50ms)
+- Reduced database load
+- Better scalability
+
+**Risk**: Low (covered by existing tests)
+```
+
+---
+
+## 🎯 Tech Debt Identification Checklist
+
+### Before Every PR
+
+**Code Quality**:
+- [ ] No functions > 50 lines
+- [ ] No cyclomatic complexity > 10
+- [ ] No code duplication > 2%
+- [ ] All parameters used (or marked with `_`)
+- [ ] No global variables
+
+**Performance**:
+- [ ] Database queries use indexes
+- [ ] No N+1 query problems
+- [ ] Expensive operations are cached
+- [ ] No unnecessary loops or allocations
+
+**Security**:
+- [ ] All inputs validated
+- [ ] SQL injection prevented (parameterized queries)
+- [ ] Authentication enforced on protected endpoints
+- [ ] Multi-tenant isolation maintained
+- [ ] No secrets in code
+
+**Testing**:
+- [ ] Unit tests added for new code
+- [ ] Test coverage > 80%
+- [ ] Integration tests for API changes
+- [ ] All tests passing
+
+**Documentation**:
+- [ ] Exported functions have godoc comments
+- [ ] API docs updated if endpoints changed
+- [ ] README updated if setup changed
+- [ ] Complex logic has inline comments
+
+---
+
+## 🔍 Tech Debt Monitoring
+
+### Automated Detection Tools
+
+**Go**:
+```bash
+# Code quality
+golangci-lint run --enable-all
+
+# Test coverage
+go test -cover ./... | grep -v "100.0%"
+
+# Code duplication
+dupl -threshold 15 ./...
+
+# Cyclomatic complexity
+gocyclo -over 10 .
+
+# Unused code
+deadcode ./...
+```
+
+**TypeScript**:
+```bash
+# Type checking
+npm run type-check
+
+# Linting
+npm run lint
+
+# Test coverage
+npm run test -- --coverage
+
+# Bundle size
+npm run build -- --analyze
+```
+
+### Manual Code Review Patterns
+
+**Look for**:
+- TODO/FIXME comments (track as tickets)
+- Commented-out code (delete or explain)
+- Magic numbers (extract as constants)
+- Long parameter lists (use struct/interface)
+- Inconsistent naming (standardize)
+- Missing error handling (add error checks)
+
+---
+
+## 📊 Tech Debt Metrics
+
+### Track These Metrics
+
+**Code Quality**:
+- Lines of code per function (target: < 50)
+- Cyclomatic complexity (target: < 10)
+- Code duplication percentage (target: < 2%)
+- Test coverage percentage (target: > 80%)
+
+**Performance**:
+- Average API response time (target: < 100ms)
+- Slow query count (target: < 1%)
+- Cache hit rate (target: > 80%)
+- Database query count per request (target: minimize)
+
+**Security**:
+- Security vulnerabilities count (target: 0)
+- Authentication coverage (target: 100% on protected endpoints)
+- Audit log coverage (target: 100% on sensitive operations)
+
+**Documentation**:
+- Godoc coverage for exported functions (target: 100%)
+- API documentation coverage (target: 100%)
+- README completeness score
+
+---
+
+## 🎓 FleetTracker Pro Specific Patterns
+
+### Indonesian Compliance Validation
+
+```go
+// ✅ Always validate Indonesian compliance fields
+func ValidateDriver(driver *Driver) error {
+    if !ValidateNIK(driver.NIK) {
+        return errors.New("invalid NIK format (must be 16 digits)")
+    }
+    
+    if !ValidateSIM(driver.SIMNumber) {
+        return errors.New("invalid SIM format (must be 12 digits)")
+    }
+    
+    return nil
+}
+
+func ValidateVehicle(vehicle *Vehicle) error {
+    if !ValidateLicensePlate(vehicle.LicensePlate) {
+        return errors.New("invalid license plate format (e.g., B 1234 ABC)")
+    }
+    
+    if !ValidateSTNK(vehicle.STNKNumber) {
+        return errors.New("invalid STNK format")
+    }
+    
+    return nil
+}
+```
+
+### Multi-Tenant Isolation
+
+```go
+// ✅ ALWAYS filter by company_id
+func (r *VehicleRepository) GetByCompany(ctx context.Context, companyID string) ([]Vehicle, error) {
+    var vehicles []Vehicle
+    err := r.db.WithContext(ctx).
+        Where("company_id = ?", companyID). // ← CRITICAL: Never forget this!
+        Find(&vehicles).Error
+    return vehicles, err
+}
+
+// ❌ NEVER: Return data without company filtering (security vulnerability!)
+func (r *VehicleRepository) GetAll(ctx context.Context) ([]Vehicle, error) {
+    var vehicles []Vehicle
+    db.Find(&vehicles) // Returns ALL companies' data!
+    return vehicles, nil
+}
+```
+
+### Repository Pattern Usage
+
+```go
+// ✅ ALWAYS use repository pattern for data access
+type VehicleService struct {
+    repo *VehicleRepository // ← Use repository, not direct DB
+}
+
+func (s *VehicleService) GetVehicle(companyID, vehicleID string) (*Vehicle, error) {
+    return s.repo.GetByID(context.Background(), vehicleID, companyID)
+}
+
+// ❌ NEVER: Access database directly from service
+type VehicleService struct {
+    db *gorm.DB
+}
+
+func (s *VehicleService) GetVehicle(id string) (*Vehicle, error) {
+    var vehicle Vehicle
+    s.db.First(&vehicle, id) // Direct DB access bypasses repository layer
+    return &vehicle, nil
+}
+```
+
+---
+
+Remember: **Clean code is not about perfection, it's about continuous improvement**. Refactor incrementally, test thoroughly, and always prioritize readability and maintainability.

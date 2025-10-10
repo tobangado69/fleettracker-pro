@@ -1,13 +1,22 @@
 # Product Requirements Document (PRD)
 ## Driver Tracking SaaS Application
 
+> **⚠️ DEPRECATION NOTICE**  
+> This combined PRD has been **split into separate documents** for better organization:
+> - **Backend PRD**: [docs/backend/PRD.md](backend/PRD.md) - API & Services requirements
+> - **Frontend PRD**: [docs/frontend/PRD.md](frontend/PRD.md) - UI/UX requirements
+> - **Navigation**: [docs/README.md](README.md) - Documentation index
+>
+> **Please use the new structure for all future updates.**  
+> This document is kept for reference only.
+
 ### Document Information
 - **Product Name**: FleetTracker Pro
 - **Version**: 1.0
 - **Date**: October 2025
-- **Last Updated**: October 9, 2025
+- **Last Updated**: October 10, 2025 (Deprecated)
 - **Target Market**: Indonesian Fleet Management Companies
-- **Document Type**: Product Requirements Document
+- **Document Type**: ~~Product Requirements Document~~ **ARCHIVED - See new structure above**
 - **Implementation Status**: ✅ **Backend 100% Complete** | 🚧 Frontend In Progress
 
 ---

@@ -1,16 +1,25 @@
 # Technical Implementation Guide
 ## Driver Tracking SaaS Application
 
+> **⚠️ DEPRECATION NOTICE**  
+> This combined Technical Guide has been **split into separate documents** for better organization:
+> - **Backend Technical Guide**: [docs/backend/technical-implementation-guide.md](backend/technical-implementation-guide.md) - Go + PostgreSQL implementation
+> - **Frontend Technical Guide**: [docs/frontend/technical-implementation-guide.md](frontend/technical-implementation-guide.md) - React + TypeScript implementation
+> - **Navigation**: [docs/README.md](README.md) - Documentation index
+>
+> **Please use the new structure for all future updates.**  
+> This document is kept for reference only.
+
 ### Document Information
 - **Project Name**: FleetTracker Pro
 - **Version**: 1.0
-- **Last Updated**: October 9, 2025
-- **Technology Stack**: Go + PostgreSQL + Vite + TypeScript + TanStack Query + Better Auth
+- **Last Updated**: October 10, 2025 (Deprecated)
+- **Technology Stack**: ~~Go + PostgreSQL + Vite + TypeScript + TanStack Query + Better Auth~~ **ARCHIVED - See new structure above**
 - **Architecture**: Monolithic with Separated Frontend/Backend
 - **Target Platform**: Web & Mobile (Indonesian Market)
 - **GPS Strategy**: Mobile Device GPS (Smartphone-based tracking)
-- **Backend Status**: ✅ **100% Complete** (Production-Ready)
-- **Frontend Status**: 🚧 **In Planning** (Starting Development)
+- **Backend Status**: ✅ **100% Complete** (Production-Ready) → See [Backend Tech Guide](backend/technical-implementation-guide.md)
+- **Frontend Status**: 🚧 **In Planning** (Starting Development) → See [Frontend Tech Guide](frontend/technical-implementation-guide.md)
 
 ---
 

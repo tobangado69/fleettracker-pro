@@ -204,11 +204,39 @@ curl -X POST http://localhost:8080/api/v1/users \
 5. User forced to change password
 6. User gains full access after password change
 
+## 📚 Documentation
+
+### 📂 **Documentation Structure** (Updated October 10, 2025)
+
+Documentation has been **organized by technology stack**:
+
+#### 🎯 Quick Links by Role
+
+- **Backend Developers**: Start with [Backend Technical Guide](docs/backend/technical-implementation-guide.md)
+- **Frontend Developers**: Start with [Frontend Technical Guide](docs/frontend/technical-implementation-guide.md)
+- **Product Managers**: Read [Backend PRD](docs/backend/PRD.md) + [Frontend PRD](docs/frontend/PRD.md)
+- **UX/UI Designers**: Focus on [Frontend PRD](docs/frontend/PRD.md)
+- **All Roles**: Use [Documentation Index](docs/README.md) for navigation
+
+#### 📋 Backend Documentation (✅ 100% Complete)
+- **[Backend PRD](docs/backend/PRD.md)** - API & Services requirements (80+ endpoints documented)
+- **[Backend Technical Guide](docs/backend/technical-implementation-guide.md)** - Complete Go + PostgreSQL implementation
+
+#### 🎨 Frontend Documentation (🚧 In Planning)
+- **[Frontend PRD](docs/frontend/PRD.md)** - UI/UX requirements and user flows
+- **[Frontend Technical Guide](docs/frontend/technical-implementation-guide.md)** - React + TypeScript architecture (12-week plan)
+
+#### 🔗 API & Reference
+- **[Swagger UI](http://localhost:8080/swagger/index.html)** - Interactive API documentation
+- **[Documentation Index](docs/README.md)** - Central navigation hub
+
+---
+
 ## 📁 Project Structure
 
 ```
 fleettracker-pro/
-├── backend/               # Go backend application
+├── backend/               # Go backend application (✅ 100% Complete)
 │   ├── cmd/server/        # Application entry point
 │   ├── internal/          # Private application code
 │   │   ├── auth/          # Authentication service
@@ -218,8 +246,8 @@ fleettracker-pro/
 │   │   └── common/        # Shared utilities
 │   ├── pkg/               # Public library code
 │   ├── migrations/        # Database migrations
-│   └── docs/              # API documentation
-├── frontend/              # React frontend application
+│   └── docs/              # API documentation (Swagger)
+├── frontend/              # React frontend application (🚧 In Planning)
 │   ├── src/
 │   │   ├── components/    # Reusable UI components
 │   │   ├── pages/         # Page components
@@ -228,10 +256,17 @@ fleettracker-pro/
 │   │   ├── stores/        # State management
 │   │   └── types/         # TypeScript type definitions
 │   └── public/            # Static assets
-├── docs/                  # Project documentation
-│   ├── PRD.md             # Product Requirements Document
-│   └── technical-implementation-guide.md
-├── specs/                 # SDD specifications
+├── docs/                  # Project documentation (NEW STRUCTURE)
+│   ├── backend/           # Backend-specific documentation
+│   │   ├── PRD.md         # Backend product requirements
+│   │   └── technical-implementation-guide.md
+│   ├── frontend/          # Frontend-specific documentation
+│   │   ├── PRD.md         # Frontend product requirements
+│   │   └── technical-implementation-guide.md
+│   └── README.md          # Documentation navigation index
+├── specs/                 # SDD specifications (15 features)
+│   ├── active/            # Active feature briefs
+│   └── BACKEND_COMPLETION_STATUS.md
 ├── docker-compose.yml     # Development environment
 ├── Dockerfile             # Production container
 └── README.md              # This file
