@@ -3,7 +3,7 @@
 ## Cursor Cloud specific instructions
 
 ### Project overview
-FleetTracker Pro is a Go-based fleet management SaaS backend targeting the Indonesian logistics market. The backend lives in `backend/` (a git submodule). There is no frontend yet. See `backend/Makefile` for all available commands.
+FleetTracker Pro is a fleet management SaaS for Indonesian logistics. The backend lives in `backend/` (a git submodule, Go). The frontend lives in `frontend/` (a separate git repo, Vite + React + TypeScript + Tailwind v4). See `backend/Makefile` for backend commands.
 
 ### Required system dependencies
 - **Go 1.24+** (the `go.mod` specifies `go 1.24.0`)
@@ -44,3 +44,13 @@ After migrations, seed a company and super-admin user via SQL (`INSERT INTO comp
 
 ### Gzip compression
 All API responses are gzip-compressed. Use `curl --compressed` or add `Accept-Encoding: gzip` header.
+
+### Frontend development
+- **Install deps**: `cd frontend && npm install`
+- **Dev server**: `cd frontend && npm run dev` (port 5173, proxies `/api` to backend on 8080)
+- **Build**: `cd frontend && npm run build`
+- **Lint**: `cd frontend && npm run lint`
+- **Type check**: `cd frontend && npx tsc --noEmit`
+- The frontend uses `@` path aliases (`@/` maps to `src/`). Configured in both `tsconfig.json` and `vite.config.ts`.
+- Unauthenticated API calls return 401, which the Axios interceptor redirects to `/login`. To test dashboard/pages with authentication, log in via the login page or set `localStorage.setItem('access_token', '<token>')` in the browser console.
+- Test login credentials: `admin@fleettracker.id` / `Password123!` (if backend + DB are seeded).
